@@ -90,28 +90,20 @@ export async function importRosterAction(csvText: string): Promise<ImportResult>
     }
   }
 
-  // Real mode: try Supabase, then fall back to local storage on any failure.
+  // Real mode: write to Supabase only. Do not fall back to local filesystem in production.
   try {
     const count = await importRosterClients(athletes)
     revalidate()
     return { ok: true, count, rowErrors: errors, savedTo: "supabase", bypass: false }
   } catch (e) {
     const supabaseError = e instanceof Error ? e.message : String(e)
-    try {
-      return {
-        ...saveLocal(athletes),
-        rowErrors: errors,
-        fellBackToLocal: true,
-        supabaseError,
-        bypass: false,
-      }
-    } catch (e2) {
-      return {
-        ok: false,
-        bypass: false,
-        error: e2 instanceof Error ? e2.message : "Import failed.",
-        supabaseError,
-      }
+    return {
+      ok: false,
+      bypass: false,
+      savedTo: "supabase",
+      error: "Supabase import failed.",
+      supabaseError,
+      rowErrors: errors,
     }
   }
 }
