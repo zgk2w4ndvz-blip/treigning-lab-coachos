@@ -45,7 +45,6 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .insert({
       clerk_id: userId,
       role: "coach",
-      name: "Frankie Perrelli",
     })
     .select("*")
     .single()
