@@ -84,7 +84,13 @@ export async function listRosterClients(): Promise<ImportedAthlete[]> {
     .eq("coach_id", coach.id)
     .neq("status", "archived")
     .order("first_name", { ascending: true })
-  if (error) throw new Error(error.message)
+  // This read runs during page render (roster + import status card). Degrade
+  // gracefully instead of crashing the page; the import *action* is what
+  // surfaces write errors loudly to the user.
+  if (error) {
+    console.error("listRosterClients: clients read failed —", error.message)
+    return []
+  }
   return (data ?? []).map(rowToAthlete)
 }
 
