@@ -72,7 +72,7 @@ export function ImportRosterClient({ active, count, importedAt, bypass }: Props)
           // Keep the editor text so the debug panel stays populated.
           router.refresh()
         } else {
-          toast.error(res.error ?? "Import failed.")
+          toast.error(res.supabaseError ?? res.error ?? "Import failed.")
         }
       } catch (err) {
         // A thrown/“Failed to fetch” error must never crash the page.
