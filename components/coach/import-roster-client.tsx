@@ -171,18 +171,7 @@ export function ImportRosterClient({ active, count, importedAt, bypass }: Props)
         </CardContent>
       </Card>
 
-      {!bypass ? (
-        <Card className="border-amber-300 dark:border-amber-900">
-          <CardContent className="flex items-start gap-3 p-4 text-sm">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <p>
-              CSV import writes to local mock data and is available in{" "}
-              <strong>dev bypass mode</strong> only. Set{" "}
-              <code className="text-xs">NEXT_PUBLIC_DEV_AUTH_BYPASS=true</code> and restart.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
+
 
       {/* current status */}
       <Card>
@@ -371,7 +360,7 @@ export function ImportRosterClient({ active, count, importedAt, bypass }: Props)
           <div className="flex justify-end">
             <Button
               onClick={doImport}
-              disabled={pending || !bypass || parsed.athletes.length === 0}
+              disabled={pending || parsed.athletes.length === 0}
             >
               {pending ? "Importing…" : `Import ${parsed.athletes.length || ""} athletes`.trim()}
             </Button>
