@@ -40,7 +40,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
   if (data) return data
 
-  const { data: created } = await supabase
+  const { data: created, error } = await supabase
     .from("profiles")
     .insert({
       clerk_id: userId,
@@ -48,6 +48,9 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     })
     .select("*")
     .single()
+
+  console.log("PROFILE CREATE ERROR:", error)
+  console.log("PROFILE CREATED:", created)
 
   return created ?? null
 }
