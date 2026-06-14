@@ -3,14 +3,15 @@ import { ArrowLeft } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
-import { readImportedAthletes } from "@/lib/dev-roster-store"
+import { listRosterClients } from "@/lib/data/client-repo"
 import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { ImportRosterClient } from "@/components/coach/import-roster-client"
 import fs from "node:fs"
 import path from "node:path"
 
-function importedAt(): string | null {
+/** Local-store import timestamp — dev bypass only (no .dev-data in prod). */
+function localImportedAt(): string | null {
   try {
     const raw = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), ".dev-data", "roster.json"), "utf8")
@@ -23,7 +24,10 @@ function importedAt(): string | null {
 
 export default async function ImportRosterPage() {
   await requireCoach()
-  const athletes = readImportedAthletes()
+  // Reflects the real roster: Supabase `clients` in production, the local store
+  // in dev bypass (listRosterClients branches on DEV_AUTH_BYPASS).
+  const roster = await listRosterClients()
+  const count = roster.length
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6 md:p-8">
@@ -36,14 +40,14 @@ export default async function ImportRosterPage() {
         </Button>
         <PageHeader
           title="Import Roster"
-          description="Replace the demo athletes with your real roster via CSV. Imported data drives the entire app."
+          description="Add or replace your roster via CSV. Imported athletes drive the entire app."
         />
       </div>
 
       <ImportRosterClient
-        active={athletes !== null}
-        count={athletes?.length ?? 0}
-        importedAt={athletes ? importedAt() : null}
+        active={count > 0}
+        count={count}
+        importedAt={DEV_AUTH_BYPASS && count > 0 ? localImportedAt() : null}
         bypass={DEV_AUTH_BYPASS}
       />
     </main>

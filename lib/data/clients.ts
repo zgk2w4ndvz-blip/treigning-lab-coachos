@@ -1,5 +1,6 @@
 import "server-only"
 
+import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
 import { compliancePct } from "@/lib/utils/format"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
@@ -33,11 +34,16 @@ function dateDaysAgo(days: number): string {
 export async function listClientsForRoster(): Promise<ClientListItem[]> {
   if (DEV_AUTH_BYPASS) return getBypassRosterList()
 
+  const coach = await requireCoach()
   const supabase = await createServerSupabase()
 
   const [{ data: clients }, { data: comps }, { data: alerts }, { data: hydration }, { data: recovery }, { data: weights }] =
     await Promise.all([
-      supabase.from("clients").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("clients")
+        .select("*")
+        .eq("coach_id", coach.id)
+        .order("created_at", { ascending: false }),
       supabase
         .from("competitions")
         .select("*")

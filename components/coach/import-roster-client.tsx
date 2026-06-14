@@ -181,21 +181,33 @@ export function ImportRosterClient({ active, count, importedAt, bypass }: Props)
               <>
                 <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-500" />
                 <span>
-                  Showing <strong>your imported roster</strong> — {count} athlete
-                  {count === 1 ? "" : "s"}
+                  {bypass ? (
+                    <>
+                      Showing <strong>your imported roster</strong>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{count}</strong> athlete{count === 1 ? "" : "s"} on
+                      your Supabase roster
+                    </>
+                  )}
+                  {bypass ? ` — ${count} athlete${count === 1 ? "" : "s"}` : ""}
                   {importedAt ? ` · imported ${new Date(importedAt).toLocaleString()}` : ""}
                 </span>
               </>
             ) : (
               <>
-                <Badge variant="secondary">Demo data</Badge>
+                <Badge variant="secondary">{bypass ? "Demo data" : "Empty roster"}</Badge>
                 <span className="text-muted-foreground">
-                  Showing the seeded demo athletes. Import a CSV to replace them.
+                  {bypass
+                    ? "Showing the seeded demo athletes. Import a CSV to replace them."
+                    : "No athletes on your roster yet. Import a CSV to add them."}
                 </span>
               </>
             )}
           </div>
-          {active ? (
+          {/* Restore demo is a dev-bypass-only operation. */}
+          {active && bypass ? (
             <Button variant="outline" size="sm" onClick={doClear} disabled={pending}>
               <Trash2 className="size-4" />
               Restore demo data

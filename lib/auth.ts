@@ -32,33 +32,32 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   const { userId } = await auth()
   if (!userId) return null
 
+  // Admin (service-role) is appropriate here — this is profile *sync* for the
+  // caller's OWN row, keyed by the Clerk-verified userId. It must work even
+  // before the Clerk↔Supabase RLS provider is wired (resolving identity is what
+  // RLS itself depends on), and it never reads or writes another user's data.
+  // All other clients-table access goes through createServerSupabase()/RLS.
   const supabase = createAdminSupabase()
-  const { data } = await supabase
+
+  const { data: existing } = await supabase
     .from("profiles")
     .select("*")
     .eq("clerk_id", userId)
     .maybeSingle()
+  if (existing) return existing
 
-  if (data) return data
-
+  // First sign-in without a configured webhook: create the coach profile on
+  // demand. Upsert keeps this race-safe against the webhook / concurrent loads.
   const { data: created, error } = await supabase
     .from("profiles")
-    .insert({
-      clerk_id: userId,
-      role: "coach",
-    })
+    .upsert({ clerk_id: userId, role: "coach" }, { onConflict: "clerk_id" })
     .select("*")
     .single()
-
-  console.log(
-    "PROFILE INSERT RESULT:",
-    JSON.stringify({
-      error,
-      created,
-    })
-  )
-
-  return created ?? null
+  if (error) {
+    console.error("getCurrentProfile: profile sync failed —", error.message)
+    return null
+  }
+  return created
 }
 
 /** Require any authenticated, synced profile. Redirects otherwise. */

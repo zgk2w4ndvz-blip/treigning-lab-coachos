@@ -2,7 +2,6 @@ import "server-only"
 
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
-import { createAdminSupabase } from "@/lib/supabase/admin"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import {
   addImportedAthlete,
@@ -75,14 +74,17 @@ function slugId(input: RosterClientInput, existing: Set<string>): string {
 export async function listRosterClients(): Promise<ImportedAthlete[]> {
   if (DEV_AUTH_BYPASS) return readImportedAthletes() ?? []
 
+  // RLS scopes rows to the current coach; the explicit coach_id filter is
+  // belt-and-suspenders and documents intent.
   const coach = await requireCoach()
-  const supabase = createAdminSupabase()
-  const { data } = await supabase
+  const supabase = await createServerSupabase()
+  const { data, error } = await supabase
     .from("clients")
     .select("*")
     .eq("coach_id", coach.id)
     .neq("status", "archived")
     .order("first_name", { ascending: true })
+  if (error) throw new Error(error.message)
   return (data ?? []).map(rowToAthlete)
 }
 
@@ -168,11 +170,13 @@ export async function importRosterClients(
     return athletes.length
   }
 
+  // User-facing write goes through RLS (same path as createRosterClient). The
+  // insert's WITH CHECK (coach_id = current_profile_id()) must pass, so a token
+  // misconfiguration surfaces as a real error here instead of being hidden by
+  // the service-role client.
   const coach = await requireCoach()
-  const supabase = createAdminSupabase()
-  const rows = athletes.map((a) =>
-    inputToInsert({ ...a }, coach.id)
-  )
+  const supabase = await createServerSupabase()
+  const rows = athletes.map((a) => inputToInsert({ ...a }, coach.id))
   const { data, error } = await supabase.from("clients").insert(rows).select("id")
   if (error) throw new Error(error.message)
   return data?.length ?? 0
