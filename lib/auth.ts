@@ -38,7 +38,19 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .eq("clerk_id", userId)
     .maybeSingle()
 
-  return data ?? null
+  if (data) return data
+
+  const { data: created } = await supabase
+    .from("profiles")
+    .insert({
+      clerk_id: userId,
+      role: "coach",
+      name: "Frankie Perrelli",
+    })
+    .select("*")
+    .single()
+
+  return created ?? null
 }
 
 /** Require any authenticated, synced profile. Redirects otherwise. */
