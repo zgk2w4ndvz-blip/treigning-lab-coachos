@@ -2,6 +2,7 @@ import "server-only"
 
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
+import { createAdminSupabase } from "@/lib/supabase/admin"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import {
   addImportedAthlete,
@@ -166,7 +167,7 @@ export async function importRosterClients(
   }
 
   const coach = await requireCoach()
-  const supabase = await createServerSupabase()
+  const supabase = createAdminSupabase()
   const rows = athletes.map((a) =>
     inputToInsert({ ...a }, coach.id)
   )
