@@ -50,10 +50,13 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .select("*")
     .single()
 
-  if (error) {
-    console.error("PROFILE CREATE ERROR JSON:", JSON.stringify(error))
-  }
-  console.log("PROFILE CREATED:", created)
+  console.log(
+    "PROFILE INSERT RESULT:",
+    JSON.stringify({
+      error,
+      created,
+    })
+  )
 
   return created ?? null
 }
