@@ -75,10 +75,12 @@ function slugId(input: RosterClientInput, existing: Set<string>): string {
 export async function listRosterClients(): Promise<ImportedAthlete[]> {
   if (DEV_AUTH_BYPASS) return readImportedAthletes() ?? []
 
-  const supabase = await createServerSupabase()
+  const coach = await requireCoach()
+  const supabase = createAdminSupabase()
   const { data } = await supabase
     .from("clients")
     .select("*")
+    .eq("coach_id", coach.id)
     .neq("status", "archived")
     .order("first_name", { ascending: true })
   return (data ?? []).map(rowToAthlete)
