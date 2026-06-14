@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
 
 import { createServerSupabase } from "@/lib/supabase/server"
+import { createAdminSupabase } from "@/lib/supabase/admin"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import {
   MOCK_ATHLETE_ID,
@@ -31,7 +32,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   const { userId } = await auth()
   if (!userId) return null
 
-  const supabase = await createServerSupabase()
+  const supabase = createAdminSupabase()
   const { data } = await supabase
     .from("profiles")
     .select("*")
