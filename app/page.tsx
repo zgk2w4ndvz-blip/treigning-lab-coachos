@@ -27,10 +27,10 @@ export default async function LandingPage() {
 
       <div className="flex gap-3">
         <Button asChild size="lg">
-          <Link href="https://accounts.treigninglaboklahoma.com/sign-up">Get started</Link>
+          <Link href="https://accounts.treigninglaboklahoma.com/sign-up?redirect_url=https%3A%2F%2Fportal.treigninglaboklahoma.com%2Fdashboard">Get started</Link>
         </Button>
         <Button asChild size="lg" variant="outline">
-          <Link href="https://accounts.treigninglaboklahoma.com/sign-in">Sign in</Link>
+          <Link href="https://accounts.treigninglaboklahoma.com/sign-in?redirect_url=https%3A%2F%2Fportal.treigninglaboklahoma.com%2Fdashboard">Sign in</Link>
         </Button>
       </div>
     </main>
