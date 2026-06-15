@@ -3,9 +3,9 @@
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Upload, Sparkles } from "lucide-react"
+import { Upload, Sparkles, Mail } from "lucide-react"
 
-import { ingestMessagesAction } from "@/lib/actions/inbox"
+import { ingestFromGmailAction, ingestMessagesAction } from "@/lib/actions/inbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,21 +25,34 @@ export function MessageImport() {
   const [pending, start] = useTransition()
   const fileRef = useRef<HTMLInputElement>(null)
 
+  function report(label: string, res: Awaited<ReturnType<typeof ingestMessagesAction>>, clear?: () => void) {
+    if (res.ok) {
+      toast.success(
+        `${label}: ${res.messageCount ?? 0} message(s) → ${res.suggestionCount ?? 0} suggestion(s); ${res.matched ?? 0} matched.`
+      )
+      if (res.rowErrors?.length) toast.message(`${res.rowErrors.length} note(s) during import.`)
+      clear?.()
+      router.refresh()
+    } else {
+      toast.error(res.error ?? "Import failed.")
+    }
+  }
+
   function ingest() {
     start(async () => {
       try {
-        const hint = format === "auto" ? undefined : format
-        const res = await ingestMessagesAction(text, hint)
-        if (res.ok) {
-          toast.success(
-            `Ingested ${res.messageCount} message(s) → ${res.suggestionCount} suggestion(s); ${res.matched} matched to athletes.`
-          )
-          if (res.rowErrors?.length) toast.message(`${res.rowErrors.length} note(s) during import.`)
-          setText("")
-          router.refresh()
-        } else {
-          toast.error(res.error ?? "Import failed.")
-        }
+        const res = await ingestMessagesAction(text, format === "auto" ? undefined : format)
+        report("Imported", res, () => setText(""))
+      } catch {
+        toast.error("Couldn't reach the server — please try again.")
+      }
+    })
+  }
+
+  function syncGmail() {
+    start(async () => {
+      try {
+        report("Gmail sync", await ingestFromGmailAction())
       } catch {
         toast.error("Couldn't reach the server — please try again.")
       }
@@ -72,6 +85,9 @@ export function MessageImport() {
             <Upload className="size-4" /> Upload file
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>Load sample</Button>
+          <Button variant="outline" size="sm" onClick={syncGmail} disabled={pending}>
+            <Mail className="size-4" /> Sync Gmail
+          </Button>
           <Select value={format} onValueChange={(v) => setFormat(v as typeof format)}>
             <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
             <SelectContent>
