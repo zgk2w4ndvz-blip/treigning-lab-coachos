@@ -38,6 +38,9 @@ export interface ImportResult {
   supabaseError?: string
   /** True iff DEV_AUTH_BYPASS was active for this request. */
   bypass?: boolean
+  /** Idempotent-import breakdown (real mode). */
+  inserted?: number
+  updated?: number
 }
 
 function revalidate() {
@@ -92,9 +95,12 @@ export async function importRosterAction(csvText: string): Promise<ImportResult>
 
   // Real mode: write to Supabase only. Do not fall back to local filesystem in production.
   try {
-    const count = await importRosterClients(athletes)
+    const { inserted, updated } = await importRosterClients(athletes)
     revalidate()
-    return { ok: true, count, rowErrors: errors, savedTo: "supabase", bypass: false }
+    return {
+      ok: true, count: inserted + updated, inserted, updated,
+      rowErrors: errors, savedTo: "supabase", bypass: false,
+    }
   } catch (e) {
     const supabaseError = e instanceof Error ? e.message : String(e)
     return {

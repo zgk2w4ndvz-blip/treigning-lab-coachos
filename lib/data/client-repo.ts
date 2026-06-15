@@ -167,23 +167,90 @@ export async function removeRosterClient(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** Bulk import. Bypass replaces the roster; real appends rows. */
+export interface ImportOutcome {
+  inserted: number
+  updated: number
+}
+
+/** Normalized name dedupe key: "first|last" lower-cased + trimmed. */
+function nameKey(first: string, last: string): string {
+  return `${first.trim().toLowerCase()}|${last.trim().toLowerCase()}`
+}
+
+/**
+ * Bulk import — IDEMPOTENT. Bypass replaces the local roster. Real mode matches
+ * each athlete against the coach's existing clients by (coach_id, email) first,
+ * then (coach_id, normalized first+last name), and UPDATES the match instead of
+ * inserting a duplicate. New athletes are inserted. In-batch dedupe too, so the
+ * same person appearing twice in one CSV doesn't create a duplicate.
+ */
 export async function importRosterClients(
   athletes: ImportedAthlete[]
-): Promise<number> {
+): Promise<ImportOutcome> {
   if (DEV_AUTH_BYPASS) {
     writeImportedAthletes(athletes)
-    return athletes.length
+    return { inserted: athletes.length, updated: 0 }
   }
 
-  // User-facing write goes through RLS (same path as createRosterClient). The
-  // insert's WITH CHECK (coach_id = current_profile_id()) must pass, so a token
-  // misconfiguration surfaces as a real error here instead of being hidden by
-  // the service-role client.
+  // RLS-scoped (same path as createRosterClient) so a token misconfiguration
+  // surfaces as a real error rather than being hidden by the service-role client.
   const coach = await requireCoach()
   const supabase = await createServerSupabase()
-  const rows = athletes.map((a) => inputToInsert({ ...a }, coach.id))
-  const { data, error } = await supabase.from("clients").insert(rows).select("id")
-  if (error) throw new Error(error.message)
-  return data?.length ?? 0
+
+  const { data: existing, error: readErr } = await supabase
+    .from("clients")
+    .select("id, email, first_name, last_name")
+    .eq("coach_id", coach.id)
+  if (readErr) throw new Error(readErr.message)
+
+  const byEmail = new Map<string, string>()
+  const byName = new Map<string, string>()
+  for (const c of existing ?? []) {
+    if (c.email) byEmail.set(c.email.toLowerCase(), c.id)
+    byName.set(nameKey(c.first_name, c.last_name), c.id)
+  }
+
+  let inserted = 0
+  let updated = 0
+  for (const a of athletes) {
+    const email = a.email ? a.email.toLowerCase() : null
+    const nk = nameKey(a.firstName, a.lastName)
+    const matchId = (email && byEmail.get(email)) || byName.get(nk) || null
+
+    // Roster fields only — never reassign coach_id, and don't reset status.
+    const fields = {
+      first_name: a.firstName,
+      last_name: a.lastName,
+      email: a.email,
+      phone: a.phone,
+      sport: a.sport,
+      current_weight_class: a.weightClass,
+      current_weight: a.currentWeight,
+      goal_weight: a.goalWeight,
+      next_competition: a.nextCompetition,
+      competition_date: a.competitionDate,
+      notes: a.coachNotes,
+    }
+
+    if (matchId) {
+      const { error } = await supabase
+        .from("clients")
+        .update({ ...fields, updated_at: new Date().toISOString() })
+        .eq("id", matchId)
+      if (error) throw new Error(error.message)
+      updated++
+    } else {
+      const { data, error } = await supabase
+        .from("clients")
+        .insert(inputToInsert(a, coach.id))
+        .select("id")
+        .single()
+      if (error) throw new Error(error.message)
+      inserted++
+      if (email) byEmail.set(email, data.id)
+      byName.set(nk, data.id) // so a duplicate later in the same CSV updates
+    }
+  }
+
+  return { inserted, updated }
 }

@@ -65,7 +65,9 @@ export function ImportRosterClient({ active, count, importedAt, bypass }: Props)
           toast.success(
             res.fellBackToLocal
               ? `Saved ${res.count} athletes to local dev storage (the database was unavailable).`
-              : `Imported ${res.count} athletes — now showing your roster.`
+              : res.inserted != null
+                ? `Import complete — ${res.inserted} new, ${res.updated} updated.`
+                : `Imported ${res.count} athletes — now showing your roster.`
           )
           if (res.rowErrors?.length)
             toast.message(`${res.rowErrors.length} row note(s) — see preview.`)
