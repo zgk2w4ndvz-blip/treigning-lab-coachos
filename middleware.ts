@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/__clerk(.*)",
   "/api/webhooks(.*)",
+  "/api/cron(.*)", // self-authenticated via CRON_SECRET
 ])
 
 // In dev bypass mode, skip Clerk entirely — every route is open.

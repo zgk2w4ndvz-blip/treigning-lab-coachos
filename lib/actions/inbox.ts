@@ -7,7 +7,7 @@ import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { setSuggestionOverride } from "@/lib/dev-inbox-store"
 import { runIngest } from "@/lib/messages/ingest"
-import { parseMessages } from "@/lib/messages/parse"
+import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
 import { fetchGmailMessages } from "@/lib/messages/sources/gmail"
 import type { ActionState } from "@/lib/actions/types"
 
@@ -26,7 +26,7 @@ function revalidate() {
 /** Manual import: parse CSV/JSON → match → classify → pending suggestions. */
 export async function ingestMessagesAction(
   text: string,
-  formatHint?: "csv" | "json"
+  formatHint?: MessageFormat
 ): Promise<IngestResult> {
   const { messages, errors } = parseMessages(text ?? "", formatHint)
   if (messages.length === 0) {

@@ -21,7 +21,7 @@ sms,,+1 555 999 0000,,2026-06-13,"Super sore and slept badly, think I need a lig
 export function MessageImport() {
   const router = useRouter()
   const [text, setText] = useState("")
-  const [format, setFormat] = useState<"auto" | "csv" | "json">("auto")
+  const [format, setFormat] = useState<"auto" | "csv" | "json" | "whatsapp">("auto")
   const [pending, start] = useTransition()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -94,6 +94,7 @@ export function MessageImport() {
               <SelectItem value="auto">Auto</SelectItem>
               <SelectItem value="csv">CSV</SelectItem>
               <SelectItem value="json">JSON</SelectItem>
+              <SelectItem value="whatsapp">WhatsApp</SelectItem>
             </SelectContent>
           </Select>
         </div>

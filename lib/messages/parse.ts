@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { parseCsv } from "@/lib/import/csv"
+import { parseChatExport } from "@/lib/messages/sources/chat-export"
 import type { MessageSource } from "@/types/database"
 
 export interface ParsedMessage {
@@ -75,11 +76,18 @@ function fromObject(o: Record<string, unknown>, fallbackSource: MessageSource): 
   }
 }
 
-/** Parse pasted/uploaded messages. Auto-detects JSON vs CSV. */
-export function parseMessages(text: string, formatHint?: "csv" | "json"): ParseResult {
+export type MessageFormat = "csv" | "json" | "whatsapp"
+
+/** Parse pasted/uploaded messages. Auto-detects JSON vs CSV; whatsapp is explicit. */
+export function parseMessages(text: string, formatHint?: MessageFormat): ParseResult {
   const errors: string[] = []
   const trimmed = (text ?? "").trim()
   if (!trimmed) return { messages: [], errors: ["No message content provided."] }
+
+  if (formatHint === "whatsapp") {
+    const messages = parseChatExport(trimmed, "whatsapp")
+    return { messages, errors: messages.length ? [] : ["No messages found in the chat export."] }
+  }
 
   const isJson = formatHint === "json" || (!formatHint && /^[[{]/.test(trimmed))
 

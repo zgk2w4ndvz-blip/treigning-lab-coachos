@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto"
 
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
+import { createAdminSupabase } from "@/lib/supabase/admin"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
@@ -26,86 +27,90 @@ export interface IngestSummary {
   errors: string[]
 }
 
-async function loadRoster(): Promise<MatchClient[]> {
-  if (DEV_AUTH_BYPASS) {
-    return getBypassClients().map((c) => ({
-      id: c.id, first_name: c.first_name, last_name: c.last_name, email: c.email, phone: c.phone,
-    }))
+export interface IngestOptions {
+  /**
+   * System-context coach id (cron/webhook). When set, the service-role client
+   * is used and Clerk is not consulted — appropriate only for trusted callers
+   * (e.g. the Gmail cron route guarded by CRON_SECRET).
+   */
+  coachId?: string
+}
+
+function ingestBypass(messages: ParsedMessage[]): IngestSummary {
+  const roster: MatchClient[] = getBypassClients().map((c) => ({
+    id: c.id, first_name: c.first_name, last_name: c.last_name, email: c.email, phone: c.phone,
+  }))
+  const nameById = new Map(roster.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+  let matched = 0
+  const created: ReviewQueueItem[] = []
+  for (const m of messages) {
+    const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
+    if (match.clientId) matched++
+    for (const s of classifyMessage(m.body)) {
+      created.push({
+        id: randomUUID(),
+        domain: s.domain, intent: s.intent, suggestedProtocol: s.suggestedProtocol,
+        confidence: s.confidence, sensitive: s.sensitive, status: "pending",
+        clientId: match.clientId,
+        athleteName: match.clientId ? nameById.get(match.clientId) ?? null : null,
+        matchMethod: match.method, matchConfidence: match.confidence,
+        source: m.source, senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
+        messageSnippet: m.body.slice(0, 280), receivedAt: m.receivedAt, createdAt: new Date().toISOString(),
+      })
+    }
   }
-  const coach = await requireCoach()
-  const supabase = await createServerSupabase()
-  const { data } = await supabase
-    .from("clients")
-    .select("id, first_name, last_name, email, phone")
-    .eq("coach_id", coach.id)
-  return (data ?? []) as MatchClient[]
+  addCreatedSuggestions(created)
+  return { messageCount: messages.length, suggestionCount: created.length, matched, errors: [] }
 }
 
 /** Match, classify, and persist a batch of normalized messages. Never throws. */
 export async function runIngest(
   messages: ParsedMessage[],
-  priorErrors: string[] = []
+  priorErrors: string[] = [],
+  opts: IngestOptions = {}
 ): Promise<IngestSummary> {
+  if (DEV_AUTH_BYPASS) {
+    const r = ingestBypass(messages)
+    return { ...r, errors: [...priorErrors, ...r.errors] }
+  }
+
   const errors = [...priorErrors]
-  const roster = await loadRoster()
-  const nameById = new Map(roster.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+  // Interactive callers resolve identity via Clerk (RLS client). Trusted system
+  // callers pass coachId and use the service-role client.
+  const { coachId, supabase } = opts.coachId
+    ? { coachId: opts.coachId, supabase: createAdminSupabase() }
+    : { coachId: (await requireCoach()).id, supabase: await createServerSupabase() }
+
+  const { data: clients } = await supabase
+    .from("clients").select("id, first_name, last_name, email, phone").eq("coach_id", coachId)
+  const roster = (clients ?? []) as MatchClient[]
   let matched = 0
   let suggestionCount = 0
 
-  if (DEV_AUTH_BYPASS) {
-    const created: ReviewQueueItem[] = []
-    for (const m of messages) {
-      const match = matchAthlete(
-        { name: m.senderName, phone: m.senderPhone, email: m.senderEmail },
-        roster
+  for (const m of messages) {
+    const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
+    if (match.clientId) matched++
+    const { data: msg, error: msgErr } = await supabase
+      .from("message_ingest")
+      .insert({
+        coach_id: coachId, client_id: match.clientId, source: m.source,
+        external_id: m.externalId, sender_name: m.senderName, sender_phone: m.senderPhone,
+        sender_email: m.senderEmail, body: m.body, received_at: m.receivedAt,
+        match_method: match.method, match_confidence: match.confidence,
+      })
+      .select("id").single()
+    if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
+    const suggestions = classifyMessage(m.body)
+    if (suggestions.length) {
+      const { error: sErr } = await supabase.from("suggested_actions").insert(
+        suggestions.map((s) => ({
+          coach_id: coachId, client_id: match.clientId, message_id: msg.id,
+          domain: s.domain, intent: s.intent, suggested_protocol: s.suggestedProtocol,
+          confidence: s.confidence, sensitive: s.sensitive, status: "pending" as const,
+        }))
       )
-      if (match.clientId) matched++
-      for (const s of classifyMessage(m.body)) {
-        created.push({
-          id: randomUUID(),
-          domain: s.domain, intent: s.intent, suggestedProtocol: s.suggestedProtocol,
-          confidence: s.confidence, sensitive: s.sensitive, status: "pending",
-          clientId: match.clientId,
-          athleteName: match.clientId ? nameById.get(match.clientId) ?? null : null,
-          matchMethod: match.method, matchConfidence: match.confidence,
-          source: m.source, senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
-          messageSnippet: m.body.slice(0, 280), receivedAt: m.receivedAt, createdAt: new Date().toISOString(),
-        })
-      }
-    }
-    addCreatedSuggestions(created)
-    suggestionCount = created.length
-  } else {
-    const coach = await requireCoach()
-    const supabase = await createServerSupabase()
-    for (const m of messages) {
-      const match = matchAthlete(
-        { name: m.senderName, phone: m.senderPhone, email: m.senderEmail },
-        roster
-      )
-      if (match.clientId) matched++
-      const { data: msg, error: msgErr } = await supabase
-        .from("message_ingest")
-        .insert({
-          coach_id: coach.id, client_id: match.clientId, source: m.source,
-          external_id: m.externalId, sender_name: m.senderName, sender_phone: m.senderPhone,
-          sender_email: m.senderEmail, body: m.body, received_at: m.receivedAt,
-          match_method: match.method, match_confidence: match.confidence,
-        })
-        .select("id").single()
-      if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
-      const suggestions = classifyMessage(m.body)
-      if (suggestions.length) {
-        const { error: sErr } = await supabase.from("suggested_actions").insert(
-          suggestions.map((s) => ({
-            coach_id: coach.id, client_id: match.clientId, message_id: msg.id,
-            domain: s.domain, intent: s.intent, suggested_protocol: s.suggestedProtocol,
-            confidence: s.confidence, sensitive: s.sensitive, status: "pending" as const,
-          }))
-        )
-        if (sErr) errors.push(`Suggestions skipped: ${sErr.message}`)
-        else suggestionCount += suggestions.length
-      }
+      if (sErr) errors.push(`Suggestions skipped: ${sErr.message}`)
+      else suggestionCount += suggestions.length
     }
   }
 
