@@ -9,7 +9,11 @@
     "lint": "eslint",
     "setup:supabase": "bash scripts/setup-supabase.sh",
     "setup:supabase:demo": "bash scripts/setup-supabase.sh --demo",
-    "db:types": "bash scripts/setup-supabase.sh --types"
+    "db:types": "bash scripts/setup-supabase.sh --types",
+    "import:scrape": "tsx tools/treigning-import/scrape.ts",
+    "import:transform": "tsx tools/treigning-import/transform.ts",
+    "import:dry-run": "tsx tools/treigning-import/upsert.ts",
+    "import:apply": "tsx tools/treigning-import/upsert.ts --apply"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -47,6 +51,7 @@
     "eslint-config-next": "^15.5.19",
     "playwright": "^1.60.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

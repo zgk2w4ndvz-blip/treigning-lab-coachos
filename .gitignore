@@ -42,3 +42,8 @@ next-env.d.ts
 
 # Local imported roster (dev bypass)
 .dev-data/
+
+# Treigning Lab importer — scraped data, outputs, and browser session (cookies!)
+tools/treigning-import/raw-backup/
+tools/treigning-import/out/
+tools/treigning-import/.session/

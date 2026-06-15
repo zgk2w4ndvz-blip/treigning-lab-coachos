@@ -1,0 +1,39 @@
+[
+  {
+    "name": "Jordan Vance",
+    "email": "jordan.vance@example.com",
+    "phone": "(555) 201-7788",
+    "sport": "Powerlifting",
+    "weight_class": "-83kg",
+    "weight": "183.4 lb",
+    "goal_weight": 181,
+    "body_fat": "14.2",
+    "skeletal_muscle_mass": "92.4",
+    "total_body_water": "118.7",
+    "bmr": 1850,
+    "measured_at": "2026-06-10",
+    "next_competition": "Nationals",
+    "competition_date": "2026-08-15",
+    "coach_notes": "Cutting for nationals; protect sleep.",
+    "resting_hr": 54,
+    "hrv": 71
+  },
+  {
+    "first_name": "Maya",
+    "last_name": "Okafor",
+    "email": "MAYA.OKAFOR@example.com",
+    "sport": "Weightlifting",
+    "division": "71kg",
+    "body_weight": 156,
+    "fat_percent": 18.0,
+    "smm": 71.2,
+    "vo2max": 48
+  },
+  {
+    "name": "Devon Reyes",
+    "sport": "CrossFit",
+    "weight": "n/a",
+    "competition_date": "TBD",
+    "notes": "Engine + recovery focus."
+  }
+]
