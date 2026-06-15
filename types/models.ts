@@ -21,6 +21,9 @@ export type {
   SuggestionStatus,
   MessageMatch,
   MessageSource,
+  CalendarCategory,
+  CalendarStatus,
+  CalendarRecurrence,
 } from "@/types/database"
 
 export type {
@@ -72,6 +75,17 @@ export type BiomarkerReading = Tables<"biomarker_readings">
 export type MessageIngest = Tables<"message_ingest">
 export type SuggestedAction = Tables<"suggested_actions">
 export type Prescription = Tables<"prescriptions">
+export type AthleteCalendarEvent = Tables<"athlete_calendar_events">
+
+/** A single (possibly recurrence-expanded) calendar occurrence on one day. */
+export interface CalendarOccurrence {
+  /** Stable per-occurrence id (`${event.id}` or `${event.id}@${date}`). */
+  key: string
+  event: AthleteCalendarEvent
+  date: string // yyyy-MM-dd
+  start: string // ISO datetime
+  end: string | null
+}
 export type ScheduledSession = Tables<"schedule_sessions">
 
 // ---- Combat sports: typed protocol documents ------------------------------

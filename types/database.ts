@@ -54,6 +54,23 @@ export type SuggestionDomain =
   | "training"
 export type SuggestionStatus = "pending" | "approved" | "edited" | "rejected"
 export type PrescriptionStatus = "active" | "completed" | "cancelled"
+export type CalendarCategory =
+  | "strength"
+  | "conditioning"
+  | "sport"
+  | "low_base"
+  | "supplementation"
+  | "altolab"
+  | "nutrition"
+  | "hydration"
+  | "recovery"
+  | "testing"
+  | "weigh_in"
+  | "competition"
+  | "check_in"
+  | "note"
+export type CalendarStatus = "planned" | "completed" | "skipped"
+export type CalendarRecurrence = "none" | "daily" | "weekly"
 
 export type Json =
   | string
@@ -542,6 +559,25 @@ export interface Database {
         notes: string | null
         created_at: Timestamp
       }, Defaults | "confidence" | "sensitive" | "status">
+
+      athlete_calendar_events: Table<{
+        id: string
+        coach_id: string
+        client_id: string
+        category: CalendarCategory
+        title: string
+        description: string | null
+        starts_at: Timestamp
+        ends_at: Timestamp | null
+        all_day: boolean
+        status: CalendarStatus
+        recurrence: CalendarRecurrence
+        recurrence_until: string | null
+        prescription_id: string | null
+        details: Json | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "all_day" | "status" | "recurrence" | "updated_at">
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -568,6 +604,9 @@ export interface Database {
       suggestion_domain: SuggestionDomain
       suggestion_status: SuggestionStatus
       prescription_status: PrescriptionStatus
+      calendar_category: CalendarCategory
+      calendar_status: CalendarStatus
+      calendar_recurrence: CalendarRecurrence
     }
   }
 }
