@@ -42,9 +42,15 @@ database password — you'll need it for the connection string.
 | Where | Value | Goes into |
 |---|---|---|
 | Project Settings → API → Project URL | `https://xxxx.supabase.co` | `NEXT_PUBLIC_SUPABASE_URL` |
-| Project Settings → API → `anon` `public` | `eyJ…` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
-| Project Settings → API → `service_role` `secret` | `eyJ…` | `SUPABASE_SERVICE_ROLE_KEY` |
+| Project Settings → API Keys → **Publishable key** | `sb_publishable_…` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| Project Settings → API Keys → **Secret key** | `sb_secret_…` | `SUPABASE_SERVICE_ROLE_KEY` |
 | Project Settings → Database → Connection string → **Session pooler** | `postgresql://postgres.[REF]:[PW]@aws-0-[region].pooler.supabase.com:5432/postgres` | `SUPABASE_DB_URL` |
+
+> **Use the new API key format.** The publishable key (`sb_publishable_…`) is the
+> browser-safe anon role; the secret key (`sb_secret_…`) is server-only — never
+> expose or commit it. The legacy JWT keys (`eyJ…`) are deprecated; once a project
+> migrates to the new keys, a disabled legacy `service_role` JWT returns
+> HTTP 401 `Invalid API key`.
 
 > Use the **Session pooler** string (port 5432) for migrations — it's
 > IPv4-friendly from a laptop. The "Direct connection" is often IPv6-only and
@@ -71,13 +77,17 @@ real DB; flip it back to `true` anytime to return to mock mode).
 ### 4a. With the script (recommended)
 
 ```bash
-npm run setup:supabase          # migrations 0001→0004 + seed.sql (alert rules)
+npm run setup:supabase          # all migrations in order + seed.sql (alert rules)
 # or, to also load demo athletes (edit the clerk_id in seed_demo.sql first):
 npm run setup:supabase:demo
 ```
 
-The script applies `supabase/migrations/*.sql` in order, then `seed.sql`, using
-`psql` (install it first: `brew install libpq && brew link --force libpq`).
+The script applies every `supabase/migrations/*.sql` in order, then `seed.sql`,
+using `psql` (install it first: `brew install libpq && brew link --force libpq`).
+
+> On a **fresh** project, follow up with `npm run db:baseline` to record those
+> migrations in the ledger (see [Migration tracking](#migration-tracking--drift-checks)
+> below). From then on, use `npm run db:migrate` to apply only new migrations.
 
 ### 4b. Regenerate types (optional, reference only)
 
@@ -163,6 +173,60 @@ each write, refresh and check the row in Supabase → **Table editor → clients
 Set `NEXT_PUBLIC_DEV_AUTH_BYPASS=true` in `.env.local` and restart. The app
 serves in-memory mock data again and never touches Supabase — handy for UI work
 without credentials.
+
+## Migration tracking & drift checks
+
+CoachOS has **no automatic migration pipeline** — Vercel deploys app code only,
+it does not touch the database. It is therefore easy for the production schema to
+silently lag the repo (this is exactly what caused the `Could not find the 'bmr'
+column of 'weight_logs' in the schema cache` outage: migrations `0005`–`0008` had
+never been applied). A `schema_migrations` ledger plus a drift check prevents it.
+
+### The ledger
+
+`scripts/db-migrate.sh` maintains a `schema_migrations(version, applied_at)`
+table. A *version* is the migration filename without `.sql` (e.g.
+`0006_schedule`) — filenames, not numeric prefixes, are the key, so the two
+`0006_*` migrations never collide. The table is created on demand
+(`create table if not exists`) and is never dropped.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `npm run db:check` | Compares repo migrations against the ledger. Prints applied / missing. **Exits non-zero if any are missing** — use as a pre-deploy gate. |
+| `npm run db:migrate` | Applies only the migrations **not** already in the ledger, in filename order, each in a transaction with its ledger insert. Already-applied migrations are never re-run. Reloads the PostgREST cache afterward. |
+| `npm run db:baseline` | Records all current repo migrations as applied **without running any DDL**. Run once to adopt the ledger on a database that is already migrated. |
+
+All three read `SUPABASE_DB_URL` from the environment or `.env.local` and need
+`psql`, exactly like `setup:supabase`.
+
+### Run this before every deploy
+
+```bash
+npm run db:check        # fails if production is missing any migration
+```
+
+If it reports missing migrations, apply them **before** shipping the code that
+depends on them:
+
+```bash
+npm run db:migrate      # applies the missing migrations + records them
+npm run db:check        # confirm: "Production is up to date"
+```
+
+After any DDL, the script issues `notify pgrst, 'reload schema';` so PostgREST
+picks up new columns/tables immediately. If you ever apply SQL by hand (e.g. via
+the SQL editor), record it in the ledger so the check stays accurate:
+
+```sql
+insert into schema_migrations (version) values ('0009_your_migration')
+  on conflict do nothing;
+```
+
+> **Adding a new migration:** drop the `NNNN_name.sql` file into
+> `supabase/migrations/`, then `npm run db:migrate`. The check/apply flow keys off
+> the filename, so no manifest to maintain.
 
 ## Troubleshooting
 
