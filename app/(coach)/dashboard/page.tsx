@@ -4,19 +4,22 @@ import { requireCoach } from "@/lib/auth"
 import { getDashboardSummary } from "@/lib/data/dashboard"
 import { listClientsForRoster } from "@/lib/data/clients"
 import { listActiveCutsForBoard } from "@/lib/data/combat"
+import { getCalendarEvents } from "@/lib/data/calendar"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { AlertFeed } from "@/components/coach/alert-feed"
 import { DashboardTasks } from "@/components/coach/dashboard-tasks"
 import { UpcomingCompetitions } from "@/components/coach/upcoming-competitions"
 import { CombatWatch } from "@/components/coach/combat-watch"
+import { RosterWeek } from "@/components/coach/roster-week"
 
 export default async function DashboardPage() {
   const profile = await requireCoach()
-  const [summary, roster, cuts] = await Promise.all([
+  const [summary, roster, cuts, calendar] = await Promise.all([
     getDashboardSummary(),
     listClientsForRoster(),
     listActiveCutsForBoard(),
+    getCalendarEvents(),
   ])
 
   const firstName = profile.full_name?.split(" ")[0]
@@ -63,6 +66,8 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      <RosterWeek events={calendar} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <DashboardTasks tasks={summary.todaysTasks} />
