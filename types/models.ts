@@ -57,6 +57,7 @@ export type AlertRule = Tables<"alert_rules">
 export type Alert = Tables<"alerts">
 export type WeightClass = Tables<"weight_classes">
 export type WeighIn = Tables<"weigh_ins">
+export type BiomarkerReading = Tables<"biomarker_readings">
 export type ScheduledSession = Tables<"schedule_sessions">
 
 // ---- Combat sports: typed protocol documents ------------------------------

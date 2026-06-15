@@ -100,6 +100,7 @@ supabase/migrations/0002_rls.sql
 supabase/migrations/0003_combat_sports.sql
 supabase/migrations/0004_client_roster_fields.sql
 supabase/migrations/0005_body_composition.sql
+supabase/migrations/0006_biomarkers.sql
 supabase/seed.sql
 ```
 

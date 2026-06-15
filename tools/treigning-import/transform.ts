@@ -77,17 +77,27 @@ function main() {
       null, 2
     )
   )
+  // Structured biomarker readings, ready for biomarker_readings (labs vertical).
+  fs.writeFileSync(
+    path.join(OUT_DIR, "coachos-biomarkers.json"),
+    JSON.stringify(
+      valid.map((r) => ({ name: `${r.client.first_name} ${r.client.last_name}`, email: r.email, readings: r.biomarkers })),
+      null, 2
+    )
+  )
 
   const withBodyComp = valid.filter((r) => r.bodyComp).length
   const withEmail = valid.filter((r) => r.email).length
+  const biomarkerCount = valid.reduce((n, r) => n + r.biomarkers.length, 0)
   console.log("Transform complete:")
   console.log(`  input records      : ${raw.length}`)
   console.log(`  valid (has a name) : ${valid.length}`)
   console.log(`  skipped (no name)  : ${skipped}`)
   console.log(`  with email         : ${withEmail}`)
   console.log(`  with body comp     : ${withBodyComp}`)
+  console.log(`  biomarker readings : ${biomarkerCount}`)
   console.log(`  in-batch dupe keys : ${dupes.length}${dupes.length ? ` (${dupes.join(", ")})` : ""}`)
-  console.log(`\n  wrote out/coachos-rows.json, out/coachos-clients.csv, out/unmapped-biomarkers.json`)
+  console.log(`\n  wrote out/coachos-rows.json, out/coachos-clients.csv, out/coachos-biomarkers.json, out/unmapped-biomarkers.json`)
   console.log(`  next: dry-run the DB plan →  npx tsx tools/treigning-import/upsert.ts`)
 }
 

@@ -29,10 +29,22 @@ export interface BodyCompRow {
   logged_at: string // ISO datetime
 }
 
+/** Maps to a CoachOS `biomarker_readings` row (the labs vertical). */
+export interface BiomarkerRow {
+  marker: string // normalized key, e.g. "hrv"
+  label: string | null // original field name
+  value_num: number | null
+  value_text: string | null
+  unit: string | null
+  category: string | null // recovery | performance | blood | other
+  measured_at: string // ISO datetime
+}
+
 /** One athlete fully transformed into CoachOS-shaped data. */
 export interface ImportRow {
   client: ClientRow
   bodyComp: BodyCompRow | null
+  biomarkers: BiomarkerRow[]
   /** Lower-cased email when present — primary dedupe key. */
   email: string | null
   /** Fallback dedupe key: `${first}|${last}` lower-cased. */

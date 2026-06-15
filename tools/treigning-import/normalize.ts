@@ -24,6 +24,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+/** Like toNumber but allows zero/negative — for biomarkers where any value is valid. */
+export function toNumberAny(v: unknown): number | null {
+  if (v == null) return null
+  if (typeof v === "number") return Number.isFinite(v) ? v : null
+  const m = String(v).match(/-?\d+(?:\.\d+)?/)
+  if (!m) return null
+  const n = Number(m[0])
+  return Number.isFinite(n) ? n : null
+}
+
 /** Split a full name into first/last (last token = last name; rest = first). */
 export function splitName(full: unknown): { first: string; last: string } {
   const s = cleanStr(full) ?? ""

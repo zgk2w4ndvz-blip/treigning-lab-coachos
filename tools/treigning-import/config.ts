@@ -17,8 +17,23 @@ import {
   pick,
   splitName,
   toNumber,
+  toNumberAny,
 } from "./normalize"
-import type { BodyCompRow, ClientRow, ImportRow, RawAthlete } from "./types"
+import type {
+  BiomarkerRow,
+  BodyCompRow,
+  ClientRow,
+  ImportRow,
+  RawAthlete,
+} from "./types"
+
+/** Classify a biomarker key into a coarse category for the labs vertical. */
+function categorize(marker: string): string {
+  if (/(hrv|resting_hr|rhr|sleep|readiness|stress|recovery)/.test(marker)) return "recovery"
+  if (/(vo2|power|speed|watt|ftp|max)/.test(marker)) return "performance"
+  if (/(ferritin|vitamin|testosterone|cortisol|glucose|cholesterol|hdl|ldl|tsh|hemoglobin|hba1c|iron|crp)/.test(marker)) return "blood"
+  return "other"
+}
 
 // ---- scrape calibration ----------------------------------------------------
 
@@ -119,16 +134,34 @@ export function mapAthlete(raw: RawAthlete): ImportRow {
         }
       : null
 
-  // Anything not consumed is preserved for the future labs/biomarker vertical.
+  // Anything not consumed above becomes a biomarker reading (the labs vertical).
   const consumed = consumedKeys()
+  const measuredIso = bodyComp?.logged_at ?? new Date().toISOString()
   const unmappedBiomarkers: Record<string, unknown> = {}
+  const biomarkers: BiomarkerRow[] = []
   for (const [k, v] of Object.entries(raw)) {
-    if (!consumed.has(k.toLowerCase())) unmappedBiomarkers[k] = v
+    if (consumed.has(k.toLowerCase())) continue
+    unmappedBiomarkers[k] = v
+    // Only simple scalar values map to a reading; skip nested objects/arrays.
+    if (v == null || typeof v === "object") continue
+    const marker = k.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+    if (!marker) continue
+    const num = toNumberAny(v)
+    biomarkers.push({
+      marker,
+      label: k,
+      value_num: num,
+      value_text: num == null ? cleanStr(v) : null,
+      unit: null,
+      category: categorize(marker),
+      measured_at: measuredIso,
+    })
   }
 
   return {
     client,
     bodyComp,
+    biomarkers,
     email: client.email,
     nameKey: nameKey(first, last),
     unmappedBiomarkers,

@@ -460,6 +460,22 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "session_type" | "duration_min" | "status" | "updated_at">
+
+      biomarker_readings: Table<{
+        id: string
+        client_id: string
+        logged_by: string | null
+        marker: string
+        label: string | null
+        value_num: number | null
+        value_text: string | null
+        unit: string | null
+        category: string | null
+        measured_at: Timestamp
+        source: string | null
+        notes: string | null
+        created_at: Timestamp
+      }, Defaults | "measured_at">
     }
     Views: Record<string, never>
     Functions: Record<string, never>

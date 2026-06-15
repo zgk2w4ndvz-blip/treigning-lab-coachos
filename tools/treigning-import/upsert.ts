@@ -69,12 +69,14 @@ async function main() {
   const inserts = plan.filter((p) => p.op === "insert").length
   const updates = plan.filter((p) => p.op === "update").length
   const snapshots = plan.filter((p) => p.row.bodyComp).length
+  const biomarkers = plan.reduce((n, p) => n + p.row.biomarkers.length, 0)
 
   console.log(`\n${APPLY ? "APPLY" : "DRY RUN"} — coach_id=${coachId}`)
   console.log("Plan:")
   console.log(`  clients to INSERT       : ${inserts}`)
   console.log(`  clients to UPDATE       : ${updates}`)
   console.log(`  body-comp snapshots     : ${snapshots} (insert or refresh)`)
+  console.log(`  biomarker readings      : ${biomarkers} (insert or refresh)`)
   console.log(`  deletes                 : 0 (this tool never deletes)`)
   console.log("  sample:")
   for (const p of plan.slice(0, 8)) {
@@ -118,6 +120,24 @@ async function main() {
         .maybeSingle()
       if (existingLog?.id) await db.from("weight_logs").update(log).eq("id", existingLog.id)
       else await db.from("weight_logs").insert(log)
+    }
+
+    // Biomarker readings → labs vertical. Dedupe by (client, marker, source) so
+    // re-runs refresh a marker's value rather than appending duplicates.
+    if (clientId) {
+      for (const b of p.row.biomarkers) {
+        const reading = { ...b, client_id: clientId, source: SNAPSHOT_TAG }
+        const { data: existingReading } = await db
+          .from("biomarker_readings")
+          .select("id")
+          .eq("client_id", clientId)
+          .eq("marker", b.marker)
+          .eq("source", SNAPSHOT_TAG)
+          .maybeSingle()
+        if (existingReading?.id)
+          await db.from("biomarker_readings").update(reading).eq("id", existingReading.id)
+        else await db.from("biomarker_readings").insert(reading)
+      }
     }
     done++
   }
