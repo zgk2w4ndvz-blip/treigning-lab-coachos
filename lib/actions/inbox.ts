@@ -9,6 +9,7 @@ import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getCreatedSuggestions, setSuggestionOverride } from "@/lib/dev-inbox-store"
 import { addCreatedTask } from "@/lib/dev-tasks-store"
+import { addStoredPrescription } from "@/lib/dev-prescription-store"
 import { mockReviewQueue } from "@/lib/mock/inbox"
 import { runIngest } from "@/lib/messages/ingest"
 import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
@@ -120,6 +121,14 @@ export async function reviewSuggestionAction(
             priority: item.sensitive ? "high" : "medium",
             dueDate: null,
             completedAt: null,
+            createdAt: now,
+          })
+          addStoredPrescription(item.clientId, {
+            id: randomUUID(),
+            domain: item.domain,
+            title: item.intent ?? item.domain,
+            protocol,
+            status: "active",
             createdAt: now,
           })
         }

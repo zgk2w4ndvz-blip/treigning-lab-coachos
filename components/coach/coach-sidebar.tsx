@@ -7,7 +7,7 @@ import { Dumbbell } from "lucide-react"
 import { coachNav } from "@/config/nav"
 import { cn } from "@/lib/utils"
 
-export function CoachSidebar() {
+export function CoachSidebar({ inboxCount = 0 }: { inboxCount?: number }) {
   const pathname = usePathname()
 
   return (
@@ -41,7 +41,12 @@ export function CoachSidebar() {
               )}
             >
               <Icon className="size-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.href === "/inbox" && inboxCount > 0 ? (
+                <span className="bg-amber-500 text-amber-950 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums">
+                  {inboxCount > 99 ? "99+" : inboxCount}
+                </span>
+              ) : null}
             </Link>
           )
         })}

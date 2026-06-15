@@ -85,3 +85,16 @@ async function real(): Promise<InboxData> {
 export async function getInbox(): Promise<InboxData> {
   return DEV_AUTH_BYPASS ? bypass() : real()
 }
+
+/** Just the pending count — for the sidebar badge (cheap). */
+export async function getInboxPendingCount(): Promise<number> {
+  if (DEV_AUTH_BYPASS) return bypass().stats.pending
+  const coach = await requireCoach()
+  const supabase = await createServerSupabase()
+  const { count } = await supabase
+    .from("suggested_actions")
+    .select("id", { count: "exact", head: true })
+    .eq("coach_id", coach.id)
+    .eq("status", "pending")
+  return count ?? 0
+}
