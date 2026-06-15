@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS schedule_sessions_client_id_idx ON schedule_sessions 
 -- updated_at trigger
 CREATE OR REPLACE TRIGGER schedule_sessions_updated_at
   BEFORE UPDATE ON schedule_sessions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- RLS
 ALTER TABLE schedule_sessions ENABLE ROW LEVEL SECURITY;
