@@ -11,6 +11,7 @@ import {
   Droplets,
   Pill,
   HeartPulse,
+  FlaskConical,
   Dumbbell,
   Trophy,
   MessageSquare,
@@ -46,6 +47,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
   [
     { label: "Overview", segment: "", icon: LayoutDashboard },
     { label: "Body Comp", segment: "weight", icon: Scale },
+    { label: "Labs", segment: "labs", icon: FlaskConical },
     { label: "Nutrition", segment: "nutrition", icon: Utensils },
     { label: "Hydration", segment: "hydration", icon: Droplets },
     { label: "Supplements", segment: "supplements", icon: Pill },

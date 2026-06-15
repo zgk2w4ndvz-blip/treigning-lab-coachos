@@ -4,6 +4,7 @@
 // ============================================================================
 
 import type {
+  BiomarkerReading,
   HydrationLog,
   NutritionLog,
   NutritionPlan,
@@ -395,6 +396,59 @@ export function mockTrainingSessions(clientId: string, days = 21): TrainingSessi
       created_at: isoDaysAgo(Math.max(d, 0)),
     })
     idx++
+  }
+  return out
+}
+
+// ---- biomarkers (labs vertical) --------------------------------------------
+
+interface BiomarkerSpec {
+  marker: string
+  label: string
+  unit: string
+  category: "recovery" | "performance" | "blood"
+  base: number
+  drift: number // per-day change toward "now"
+  noise: number
+  decimals?: number
+}
+
+const BIOMARKER_SPECS: BiomarkerSpec[] = [
+  { marker: "hrv", label: "HRV", unit: "ms", category: "recovery", base: 62, drift: 0.12, noise: 4 },
+  { marker: "resting_hr", label: "Resting HR", unit: "bpm", category: "recovery", base: 54, drift: -0.03, noise: 2 },
+  { marker: "vo2max", label: "VO₂ max", unit: "ml/kg/min", category: "performance", base: 51, drift: 0.04, noise: 0.8, decimals: 1 },
+  { marker: "ferritin", label: "Ferritin", unit: "ng/mL", category: "blood", base: 88, drift: 0.15, noise: 6 },
+  { marker: "vitamin_d", label: "Vitamin D", unit: "ng/mL", category: "blood", base: 41, drift: 0.05, noise: 3, decimals: 1 },
+  { marker: "testosterone", label: "Testosterone", unit: "ng/dL", category: "blood", base: 610, drift: 0.4, noise: 35 },
+]
+
+/** Deterministic biomarker time series (~weekly readings over ~8 weeks). */
+export function mockBiomarkers(clientId: string): BiomarkerReading[] {
+  const out: BiomarkerReading[] = []
+  for (const spec of BIOMARKER_SPECS) {
+    const g = rngFor(clientId, `bio-${spec.marker}`)
+    let i = 0
+    for (let d = 56; d >= 0; d -= 7) {
+      const raw = spec.base + spec.drift * (56 - d) + g.noise(spec.noise)
+      const factor = Math.pow(10, spec.decimals ?? 0)
+      const value = Math.round(raw * factor) / factor
+      out.push({
+        id: `bio-${clientId}-${spec.marker}-${i}`,
+        client_id: clientId,
+        logged_by: COACH,
+        marker: spec.marker,
+        label: spec.label,
+        value_num: value,
+        value_text: null,
+        unit: spec.unit,
+        category: spec.category,
+        measured_at: isoDaysAgo(d),
+        source: "mock",
+        notes: null,
+        created_at: isoDaysAgo(d),
+      })
+      i++
+    }
   }
   return out
 }

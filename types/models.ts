@@ -334,6 +334,36 @@ export interface AthleteProgress {
   last7Completion: { date: string; score: number }[]
 }
 
+// ---- Labs / biomarkers -----------------------------------------------------
+
+export type BiomarkerCategory = "recovery" | "performance" | "blood" | "other"
+
+/** Latest/previous/change + series for one biomarker (e.g. HRV, ferritin). */
+export interface BiomarkerSummary {
+  marker: string
+  label: string
+  unit: string | null
+  category: string
+  latest: number | null
+  latestText: string | null // textual value when not numeric
+  previous: number | null
+  change: number | null
+  measuredAt: string | null
+  series: { date: string; value: number }[]
+}
+
+export interface BiomarkerCategoryGroup {
+  category: string
+  label: string
+  markers: BiomarkerSummary[]
+}
+
+export interface BiomarkersData {
+  client: Client
+  groups: BiomarkerCategoryGroup[]
+  totalReadings: number
+}
+
 // ---- Wrestling Command Center ----------------------------------------------
 
 export type WrestlingPace = "on" | "off" | "unknown"
