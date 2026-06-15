@@ -14,7 +14,7 @@ function at(daysFromToday: number, hour = 7): string {
 }
 
 /** In-memory demo calendar for dev bypass (NOT persisted — Supabase backs prod). */
-function mockAthleteCalendar(clientId: string): AthleteCalendarEvent[] {
+export function mockAthleteCalendar(clientId: string): AthleteCalendarEvent[] {
   const base = (
     n: number,
     category: CalendarCategory,

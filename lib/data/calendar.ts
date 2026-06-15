@@ -2,20 +2,33 @@ import "server-only"
 
 import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
-import { getBypassCalendar } from "@/lib/dev-roster-store"
+import { getBypassCalendar, getBypassClients } from "@/lib/dev-roster-store"
+import { mockAthleteCalendar } from "@/lib/data/athlete-calendar"
+import { athleteEventsToCalendar } from "@/lib/calendar/rollup"
 import { fullName } from "@/lib/utils/format"
 import type { CalendarEvent } from "@/types/models"
 
+const WINDOW_FROM = () => new Date(Date.now() - 31 * 86_400_000)
+const WINDOW_TO = () => new Date(Date.now() + 62 * 86_400_000)
+
 /** Calendar events across the roster for the current window. */
 export async function getCalendarEvents(): Promise<CalendarEvent[]> {
-  if (DEV_AUTH_BYPASS) return getBypassCalendar()
+  if (DEV_AUTH_BYPASS) {
+    const clients = getBypassClients()
+    const nameById = new Map(clients.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+    const athlete = clients
+      .filter((c) => c.status === "active")
+      .flatMap((c) => mockAthleteCalendar(c.id))
+    const rolled = athleteEventsToCalendar(athlete, nameById, WINDOW_FROM(), WINDOW_TO())
+    return [...getBypassCalendar(), ...rolled].sort((a, b) => a.date.localeCompare(b.date))
+  }
 
   const supabase = await createServerSupabase()
-  const from = new Date(Date.now() - 31 * 86_400_000).toISOString()
-  const to = new Date(Date.now() + 62 * 86_400_000).toISOString()
+  const from = WINDOW_FROM().toISOString()
+  const to = WINDOW_TO().toISOString()
   const toDate = to.slice(0, 10)
 
-  const [{ data: clients }, sessions, weighIns, comps] = await Promise.all([
+  const [{ data: clients }, sessions, weighIns, comps, { data: athleteCal }] = await Promise.all([
     supabase.from("clients").select("id, first_name, last_name"),
     supabase
       .from("training_sessions")
@@ -32,12 +45,15 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
       .select("id, client_id, name, competition_date, weight_class")
       .gte("competition_date", from.slice(0, 10))
       .lte("competition_date", toDate),
+    // All planning events (recurring ones may originate before the window).
+    supabase.from("athlete_calendar_events").select("*"),
   ])
 
   const nameById = new Map(
     (clients ?? []).map((c) => [c.id, fullName(c.first_name, c.last_name)])
   )
   const events: CalendarEvent[] = []
+  events.push(...athleteEventsToCalendar(athleteCal ?? [], nameById, WINDOW_FROM(), WINDOW_TO()))
 
   for (const s of sessions.data ?? []) {
     if (!s.scheduled_at) continue
