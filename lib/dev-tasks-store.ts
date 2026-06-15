@@ -15,9 +15,28 @@ import "server-only"
 import fs from "node:fs"
 import path from "node:path"
 
-import type { CoachTaskView, TaskStatus } from "@/types/models"
+import type { CoachTaskView, Task, TaskStatus } from "@/types/models"
 
 export type StoredTask = CoachTaskView & { createdAt: string }
+
+const COACH = "00000000-0000-0000-0000-0000000000c0"
+
+/** Hand-created tasks as DB-shaped rows (for the agenda reminder feed). */
+export function getCreatedTaskRows(): Task[] {
+  return getCreatedTasks().map((t) => ({
+    id: t.id,
+    coach_id: COACH,
+    client_id: t.clientId,
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    due_date: t.dueDate,
+    completed_at: t.completedAt,
+    created_at: t.createdAt,
+    updated_at: t.createdAt,
+  }))
+}
 
 export type TaskOverride = {
   status: TaskStatus

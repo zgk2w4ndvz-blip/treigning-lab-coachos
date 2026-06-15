@@ -1,15 +1,38 @@
 "use server"
 
+import { randomUUID } from "node:crypto"
+
 import { revalidatePath } from "next/cache"
 
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
-import { setSuggestionOverride } from "@/lib/dev-inbox-store"
+import { getCreatedSuggestions, setSuggestionOverride } from "@/lib/dev-inbox-store"
+import { addCreatedTask } from "@/lib/dev-tasks-store"
+import { mockReviewQueue } from "@/lib/mock/inbox"
 import { runIngest } from "@/lib/messages/ingest"
 import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
 import { fetchGmailMessages } from "@/lib/messages/sources/gmail"
 import type { ActionState } from "@/lib/actions/types"
+import type { SuggestionDomain } from "@/types/database"
+import type { TaskType } from "@/types/models"
+
+const AFFECTED_REVIEW = ["/inbox", "/tasks", "/agenda", "/dashboard"]
+function revalidateReview() {
+  for (const p of AFFECTED_REVIEW) revalidatePath(p)
+}
+
+/** Map a suggestion domain to the closest existing coach-task type. */
+const DOMAIN_TASK_TYPE: Record<SuggestionDomain, TaskType> = {
+  diet: "nutrition",
+  supplementation: "supplements",
+  altolab: "training",
+  low_base: "training",
+  hydration: "hydration",
+  recovery: "recovery",
+  labs: "general",
+  training: "training",
+}
 
 export interface IngestResult extends ActionState {
   messageCount?: number
@@ -80,6 +103,27 @@ export async function reviewSuggestionAction(
         reviewedAt: now,
         editedProtocol: edited ? editedProtocol!.trim() : undefined,
       })
+      // Approval mints a coach task (alongside the prescription) on the existing
+      // tasks board + agenda. Look up the suggestion for its athlete + domain.
+      if (decision === "approve") {
+        const item = [...getCreatedSuggestions(), ...mockReviewQueue()].find((s) => s.id === id)
+        if (item?.clientId) {
+          const protocol = edited ? editedProtocol!.trim() : item.suggestedProtocol
+          addCreatedTask({
+            id: randomUUID(),
+            clientId: item.clientId,
+            clientName: item.athleteName,
+            title: protocol,
+            description: `From ${item.source} message: “${item.messageSnippet.slice(0, 140)}”`,
+            type: DOMAIN_TASK_TYPE[item.domain],
+            status: "open",
+            priority: item.sensitive ? "high" : "medium",
+            dueDate: null,
+            completedAt: null,
+            createdAt: now,
+          })
+        }
+      }
     } else {
       const coach = await requireCoach()
       const supabase = await createServerSupabase()
@@ -111,12 +155,19 @@ export async function reviewSuggestionAction(
           })
           .eq("id", id)
         if (uErr) return { ok: false, error: uErr.message }
+
+        // Mint a coach task so the approval shows on /tasks + the agenda.
+        await supabase.from("tasks").insert({
+          coach_id: coach.id, client_id: s.client_id, title: protocol,
+          description: `Approved from a ${s.domain} message suggestion.`,
+          priority: s.sensitive ? "high" : "medium", status: "open",
+        })
       }
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Review failed." }
   }
 
-  revalidate()
+  revalidateReview()
   return { ok: true }
 }

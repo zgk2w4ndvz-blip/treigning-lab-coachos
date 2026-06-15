@@ -12,6 +12,7 @@ import {
   getBypassTaskRows,
   hasImportedRoster,
 } from "@/lib/dev-roster-store"
+import { getCreatedTaskRows } from "@/lib/dev-tasks-store"
 import { mockTasks } from "@/lib/mock/athletes"
 import {
   mockHydrationLogs,
@@ -187,8 +188,12 @@ function buildMockAgenda(): AgendaBase[] {
   ensureImportedBaselines()
   const imported = hasImportedRoster()
   const clients = getBypassClients().filter((c) => c.status === "active")
-  // Reminders: generated tasks for imported rosters, demo tasks otherwise.
-  const taskRows = imported ? getBypassTaskRows() : mockTasks
+  // Reminders: generated tasks for imported rosters, demo tasks otherwise, plus
+  // any hand-created tasks (incl. those minted by approving inbox suggestions).
+  const taskRows = [
+    ...(imported ? getBypassTaskRows() : mockTasks),
+    ...getCreatedTaskRows(),
+  ]
 
   return clients.map((client) => {
     const plan = mockNutritionPlan(client.id)
