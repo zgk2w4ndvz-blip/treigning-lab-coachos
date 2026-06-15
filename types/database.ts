@@ -41,6 +41,20 @@ export type ScheduleSessionType =
 export type SessionModality = "in_person" | "virtual" | "phone"
 export type SessionStatus = "scheduled" | "completed" | "cancelled" | "no_show"
 
+export type MessageSource = "gmail" | "sms" | "imessage" | "whatsapp" | "manual" | "csv" | "json"
+export type MessageMatch = "phone" | "email" | "name" | "unmatched"
+export type SuggestionDomain =
+  | "diet"
+  | "supplementation"
+  | "altolab"
+  | "low_base"
+  | "hydration"
+  | "recovery"
+  | "labs"
+  | "training"
+export type SuggestionStatus = "pending" | "approved" | "edited" | "rejected"
+export type PrescriptionStatus = "active" | "completed" | "cancelled"
+
 export type Json =
   | string
   | number
@@ -476,6 +490,58 @@ export interface Database {
         notes: string | null
         created_at: Timestamp
       }, Defaults | "measured_at">
+
+      message_ingest: Table<{
+        id: string
+        coach_id: string
+        client_id: string | null
+        source: MessageSource
+        external_id: string | null
+        sender_name: string | null
+        sender_phone: string | null
+        sender_email: string | null
+        body: string
+        received_at: Timestamp | null
+        match_method: MessageMatch
+        match_confidence: number
+        raw: Json | null
+        created_at: Timestamp
+      }, Defaults | "source" | "match_method" | "match_confidence">
+
+      prescriptions: Table<{
+        id: string
+        coach_id: string
+        client_id: string
+        domain: SuggestionDomain
+        title: string
+        protocol: string
+        details: Json | null
+        source_suggestion_id: string | null
+        status: PrescriptionStatus
+        starts_on: string | null
+        ends_on: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "status" | "updated_at">
+
+      suggested_actions: Table<{
+        id: string
+        coach_id: string
+        client_id: string | null
+        message_id: string
+        domain: SuggestionDomain
+        intent: string | null
+        suggested_protocol: string
+        details: Json | null
+        confidence: number
+        sensitive: boolean
+        status: SuggestionStatus
+        reviewed_by: string | null
+        reviewed_at: Timestamp | null
+        prescription_id: string | null
+        notes: string | null
+        created_at: Timestamp
+      }, Defaults | "confidence" | "sensitive" | "status">
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -497,6 +563,11 @@ export interface Database {
       schedule_session_type: ScheduleSessionType
       session_modality: SessionModality
       session_status: SessionStatus
+      message_source: MessageSource
+      message_match: MessageMatch
+      suggestion_domain: SuggestionDomain
+      suggestion_status: SuggestionStatus
+      prescription_status: PrescriptionStatus
     }
   }
 }

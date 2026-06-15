@@ -10,6 +10,17 @@ import type {
   ScheduleSessionType,
   SessionModality,
   SessionStatus,
+  SuggestionDomain,
+  SuggestionStatus,
+  MessageMatch,
+  MessageSource,
+} from "@/types/database"
+
+export type {
+  SuggestionDomain,
+  SuggestionStatus,
+  MessageMatch,
+  MessageSource,
 } from "@/types/database"
 
 export type {
@@ -58,6 +69,9 @@ export type Alert = Tables<"alerts">
 export type WeightClass = Tables<"weight_classes">
 export type WeighIn = Tables<"weigh_ins">
 export type BiomarkerReading = Tables<"biomarker_readings">
+export type MessageIngest = Tables<"message_ingest">
+export type SuggestedAction = Tables<"suggested_actions">
+export type Prescription = Tables<"prescriptions">
 export type ScheduledSession = Tables<"schedule_sessions">
 
 // ---- Combat sports: typed protocol documents ------------------------------
@@ -362,6 +376,41 @@ export interface BiomarkersData {
   client: Client
   groups: BiomarkerCategoryGroup[]
   totalReadings: number
+}
+
+// ---- Message ingestion / approval queue ------------------------------------
+
+/** A suggested action enriched with its message + athlete, for the review queue. */
+export interface ReviewQueueItem {
+  id: string
+  domain: SuggestionDomain
+  intent: string | null
+  suggestedProtocol: string
+  confidence: number
+  sensitive: boolean
+  status: SuggestionStatus
+  clientId: string | null
+  athleteName: string | null
+  matchMethod: MessageMatch
+  matchConfidence: number
+  source: MessageSource
+  senderLabel: string | null
+  messageSnippet: string
+  receivedAt: string | null
+  createdAt: string
+}
+
+export interface InboxStats {
+  pending: number
+  sensitive: number
+  unmatched: number
+  approved: number
+  rejected: number
+}
+
+export interface InboxData {
+  items: ReviewQueueItem[]
+  stats: InboxStats
 }
 
 // ---- Wrestling Command Center ----------------------------------------------

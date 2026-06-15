@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   CalendarCheck,
+  Inbox,
   Users,
   ListTodo,
   Bell,
@@ -31,6 +32,7 @@ export interface NavItem {
 export const coachNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Daily Agenda", href: "/agenda", icon: CalendarCheck },
+  { label: "Inbox", href: "/inbox", icon: Inbox },
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Combat Sports", href: "/combat", icon: Swords },
   { label: "Wrestling", href: "/wrestling", icon: Medal },
