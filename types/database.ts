@@ -559,6 +559,9 @@ export interface Database {
         reviewed_at: Timestamp | null
         prescription_id: string | null
         notes: string | null
+        source_message_id: string | null
+        source_timestamp: Timestamp | null
+        source_handle: string | null
         created_at: Timestamp
       }, Defaults | "confidence" | "sensitive" | "status">
 

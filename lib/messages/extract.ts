@@ -20,10 +20,13 @@
 import type { ClassifiedSuggestion } from "@/lib/messages/classify"
 
 export type TimeOfDay = "morning" | "evening" | "general"
+export type WeightContext = "body" | "competition"
 
 export interface WeightEntry {
   label: TimeOfDay
   weightLbs: number
+  /** Ordinary daily body weight vs an official competition / weigh-in number. */
+  context: WeightContext
 }
 
 // A number only counts as a body weight when the message is clearly about
@@ -32,10 +35,13 @@ const WEIGHT_CONTEXT =
   /\b(weight|weighed|weigh[-\s]?in|weighing|body\s?weight|lbs?|pounds|\bkg\b|\bbw\b|scale)\b/i
 const MORNING = /(morning|a\.?m\.?|wake|woke|fasted|first thing)/
 const EVENING = /(evening|night|p\.?m\.?|bed|tonight|before bed)/
+// Competition / official weigh-in cues near a weight number.
+const COMPETITION =
+  /(weigh[-\s]?in|weighed in|made weight|official|competition|comp\b|meet|match|on the scale|scale at|class limit|made the cut)/
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 
-/** Pull morning/evening/general body-weight readings from a message. */
+/** Pull morning/evening/general weight readings, tagged body vs competition. */
 export function extractWeights(text: string): WeightEntry[] {
   if (!WEIGHT_CONTEXT.test(text)) return []
   const lower = text.toLowerCase()
@@ -48,32 +54,38 @@ export function extractWeights(text: string): WeightEntry[] {
   while ((m = numRe.exec(text))) {
     const val = parseFloat(m[1])
     if (val < 50 || val > 500) continue
-    const before = lower.slice(Math.max(0, m.index - 22), m.index)
-    const after = lower.slice(m.index + m[0].length, m.index + m[0].length + 22)
+    const before = lower.slice(Math.max(0, m.index - 28), m.index)
+    const after = lower.slice(m.index + m[0].length, m.index + m[0].length + 28)
+    const win = `${before} ${after}`
     let label: TimeOfDay = "general"
-    if (MORNING.test(before) || MORNING.test(after)) label = "morning"
-    else if (EVENING.test(before) || EVENING.test(after)) label = "evening"
+    if (MORNING.test(win)) label = "morning"
+    else if (EVENING.test(win)) label = "evening"
+    // Competition cues reliably precede the number ("official weigh-in 124",
+    // "made weight at 125") — checking only the before-window avoids a later
+    // clause bleeding its context onto an earlier body-weight number.
+    const context: WeightContext = COMPETITION.test(before) ? "competition" : "body"
 
-    const key = `${label}:${val}`
+    const key = `${context}:${label}:${val}`
     if (seen.has(key)) continue
     seen.add(key)
-    entries.push({ label, weightLbs: round1(val) })
+    entries.push({ label, weightLbs: round1(val), context })
     if (entries.length >= 6) break // sanity cap
   }
   return entries
 }
 
-function weightSuggestion(entries: WeightEntry[]): ClassifiedSuggestion {
+function weightSuggestion(entries: WeightEntry[], context: WeightContext): ClassifiedSuggestion {
   const parts = entries.map(
     (e) => `${e.label === "general" ? "" : e.label + " "}${e.weightLbs} lb`.trim()
   )
+  const isComp = context === "competition"
   return {
     domain: "body_composition",
-    intent: "Body weight report",
-    suggestedProtocol: `Log weight — ${parts.join(", ")}`,
+    intent: isComp ? "Competition weigh-in" : "Body weight report",
+    suggestedProtocol: `Log ${isComp ? "competition weigh-in" : "weight"} — ${parts.join(", ")}`,
     confidence: 0.85,
     sensitive: false,
-    details: { action: "create_weight_log", entries },
+    details: { action: "create_weight_log", context, entries },
   }
 }
 
@@ -158,8 +170,12 @@ export function extractSignals(body: string): ClassifiedSuggestion[] {
   if (!text) return []
   const out: ClassifiedSuggestion[] = []
 
+  // Body weight and competition weigh-ins become separate suggestions.
   const weights = extractWeights(text)
-  if (weights.length) out.push(weightSuggestion(weights))
+  const bodyWeights = weights.filter((e) => e.context === "body")
+  const compWeights = weights.filter((e) => e.context === "competition")
+  if (bodyWeights.length) out.push(weightSuggestion(bodyWeights, "body"))
+  if (compWeights.length) out.push(weightSuggestion(compWeights, "competition"))
 
   for (const rule of OBSERVATIONS) {
     if (rule.test.test(text)) {

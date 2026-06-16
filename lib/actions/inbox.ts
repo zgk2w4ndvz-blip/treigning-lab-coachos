@@ -150,11 +150,12 @@ export async function reviewSuggestionAction(
         if (!s.client_id) return { ok: false, error: "Match this message to an athlete before approving." }
 
         const details = s.details as unknown as
-          | { action?: string; entries?: { label?: string; weightLbs?: number }[] }
+          | { action?: string; context?: string; entries?: { label?: string; weightLbs?: number }[] }
           | null
 
         if (details?.action === "create_weight_log" && Array.isArray(details.entries)) {
-          // Structured body-weight report → write weight_logs (NOT a prescription).
+          // Structured weight report → write weight_logs (NOT a prescription).
+          const isComp = details.context === "competition"
           const { data: msg } = await supabase
             .from("message_ingest").select("received_at, source").eq("id", s.message_id).single()
           const baseDate = msg?.received_at ? new Date(msg.received_at) : new Date()
@@ -163,10 +164,12 @@ export async function reviewSuggestionAction(
             .map((e) => {
               const at = new Date(baseDate)
               at.setHours(e.label === "morning" ? 7 : e.label === "evening" ? 19 : 12, 0, 0, 0)
-              const tod = e.label && e.label !== "general" ? ` (${e.label})` : ""
+              const tags = [isComp ? "competition" : null, e.label && e.label !== "general" ? e.label : null]
+                .filter(Boolean).join(", ")
               return {
                 client_id: s.client_id!, logged_by: coach.id, weight_lbs: e.weightLbs!,
-                logged_at: at.toISOString(), notes: `From ${msg?.source ?? "message"}${tod}`,
+                logged_at: at.toISOString(),
+                notes: `From ${msg?.source ?? "message"}${tags ? ` (${tags})` : ""}`,
               }
             })
           if (rows.length === 0) return { ok: false, error: "No valid weight values to log." }

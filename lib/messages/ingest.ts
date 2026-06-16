@@ -21,33 +21,61 @@ import { fullName } from "@/lib/utils/format"
 import type { ReviewQueueItem } from "@/types/models"
 import type { Json } from "@/types/database"
 
+/** A non-persisting preview of what one message would produce (dry-run). */
+export interface IngestPreviewItem {
+  senderLabel: string | null
+  clientId: string | null
+  matched: boolean
+  suggestions: { domain: string; intent: string | null }[]
+}
+
 export interface IngestSummary {
   messageCount: number
   suggestionCount: number
   matched: number
   errors: string[]
+  /** Present only when opts.dryRun — nothing was written. */
+  dryRun?: boolean
+  preview?: IngestPreviewItem[]
 }
 
 export interface IngestOptions {
   /**
-   * System-context coach id (cron/webhook). When set, the service-role client
-   * is used and Clerk is not consulted — appropriate only for trusted callers
-   * (e.g. the Gmail cron route guarded by CRON_SECRET).
+   * System-context coach id (cron/webhook/bridge). When set, the service-role
+   * client is used and Clerk is not consulted — appropriate only for trusted
+   * callers (e.g. the Gmail cron, the iMessage bridge) that have already
+   * authenticated and resolved which coach they act for.
    */
   coachId?: string
+  /**
+   * Analyze + match but persist nothing. Returns the would-be suggestion counts
+   * and a per-message preview. Athlete data is never written either way — this
+   * just skips even the pending-suggestion inserts.
+   */
+  dryRun?: boolean
 }
 
-function ingestBypass(messages: ParsedMessage[]): IngestSummary {
+function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary {
   const roster: MatchClient[] = getBypassClients().map((c) => ({
     id: c.id, first_name: c.first_name, last_name: c.last_name, email: c.email, phone: c.phone,
   }))
   const nameById = new Map(roster.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
   let matched = 0
+  const preview: IngestPreviewItem[] = []
   const created: ReviewQueueItem[] = []
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
-    for (const s of analyzeMessage(m.body)) {
+    const analyzed = analyzeMessage(m.body)
+    if (dryRun) {
+      preview.push({
+        senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
+        clientId: match.clientId, matched: !!match.clientId,
+        suggestions: analyzed.map((s) => ({ domain: s.domain, intent: s.intent })),
+      })
+      continue
+    }
+    for (const s of analyzed) {
       created.push({
         id: randomUUID(),
         domain: s.domain, intent: s.intent, suggestedProtocol: s.suggestedProtocol,
@@ -61,6 +89,10 @@ function ingestBypass(messages: ParsedMessage[]): IngestSummary {
       })
     }
   }
+  if (dryRun) {
+    const suggestionCount = preview.reduce((n, p) => n + p.suggestions.length, 0)
+    return { messageCount: messages.length, suggestionCount, matched, errors: [], dryRun: true, preview }
+  }
   addCreatedSuggestions(created)
   return { messageCount: messages.length, suggestionCount: created.length, matched, errors: [] }
 }
@@ -71,8 +103,9 @@ export async function runIngest(
   priorErrors: string[] = [],
   opts: IngestOptions = {}
 ): Promise<IngestSummary> {
+  const dryRun = !!opts.dryRun
   if (DEV_AUTH_BYPASS) {
-    const r = ingestBypass(messages)
+    const r = ingestBypass(messages, dryRun)
     return { ...r, errors: [...priorErrors, ...r.errors] }
   }
 
@@ -88,10 +121,25 @@ export async function runIngest(
   const roster = (clients ?? []) as MatchClient[]
   let matched = 0
   let suggestionCount = 0
+  const preview: IngestPreviewItem[] = []
 
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
+    const sourceHandle = m.senderPhone ?? m.senderEmail ?? null
+
+    // Dry-run: analyze + match only, persist nothing (not even pending rows).
+    if (dryRun) {
+      const analyzed = analyzeMessage(m.body)
+      suggestionCount += analyzed.length
+      preview.push({
+        senderLabel: sourceHandle ?? m.senderName ?? null,
+        clientId: match.clientId, matched: !!match.clientId,
+        suggestions: analyzed.map((s) => ({ domain: s.domain, intent: s.intent })),
+      })
+      continue
+    }
+
     const { data: msg, error: msgErr } = await supabase
       .from("message_ingest")
       .insert({
@@ -110,6 +158,7 @@ export async function runIngest(
           domain: s.domain, intent: s.intent, suggested_protocol: s.suggestedProtocol,
           confidence: s.confidence, sensitive: s.sensitive, status: "pending" as const,
           details: (s.details ?? null) as Json,
+          source_message_id: m.externalId, source_timestamp: m.receivedAt, source_handle: sourceHandle,
         }))
       )
       if (sErr) errors.push(`Suggestions skipped: ${sErr.message}`)
@@ -117,5 +166,8 @@ export async function runIngest(
     }
   }
 
+  if (dryRun) {
+    return { messageCount: messages.length, suggestionCount, matched, errors, dryRun: true, preview }
+  }
   return { messageCount: messages.length, suggestionCount, matched, errors }
 }
