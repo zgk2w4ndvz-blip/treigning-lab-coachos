@@ -3,11 +3,12 @@ import { Droplets } from "lucide-react"
 import { requireCoach } from "@/lib/auth"
 import { getHydrationData } from "@/lib/data/logs"
 import { getClientComputedAlerts } from "@/lib/data/alerts"
-import { createHydrationLog } from "@/lib/actions/logs"
+import { createHydrationLog, updateHydrationLog, deleteHydrationLog } from "@/lib/actions/logs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MetricBarChart } from "@/components/charts/metric-bar-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { LogRowActions } from "@/components/forms/log-row-actions"
 import { ModuleAlerts } from "@/components/shared/module-alerts"
 import { StatCard } from "@/components/shared/stat-card"
 import { RangeSelector } from "@/components/shared/range-selector"
@@ -114,26 +115,39 @@ export default async function HydrationPage({
                 {recent.map((l) => {
                   const pct = l.oz_target ? Math.round((l.oz_consumed / l.oz_target) * 100) : null
                   return (
-                    <li key={l.id} className="flex items-center justify-between py-2.5 text-sm">
-                      <span>{formatDate(l.logged_date)}</span>
-                      <span className="tabular-nums">
-                        {l.oz_consumed}
-                        {l.oz_target ? ` / ${l.oz_target}` : ""} oz
-                        {pct != null ? (
-                          <span
-                            className={
-                              pct >= 80
-                                ? "text-emerald-600 dark:text-emerald-500"
-                                : pct >= 50
-                                  ? "text-amber-600 dark:text-amber-500"
-                                  : "text-red-600 dark:text-red-500"
-                            }
-                          >
-                            {" "}
-                            · {pct}%
-                          </span>
-                        ) : null}
-                      </span>
+                    <li key={l.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
+                      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <span>{formatDate(l.logged_date)}</span>
+                        <span className="tabular-nums">
+                          {l.oz_consumed}
+                          {l.oz_target ? ` / ${l.oz_target}` : ""} oz
+                          {pct != null ? (
+                            <span
+                              className={
+                                pct >= 80
+                                  ? "text-emerald-600 dark:text-emerald-500"
+                                  : pct >= 50
+                                    ? "text-amber-600 dark:text-amber-500"
+                                    : "text-red-600 dark:text-red-500"
+                              }
+                            >
+                              {" "}
+                              · {pct}%
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                      <LogRowActions
+                        title="Edit hydration log"
+                        updateAction={updateHydrationLog.bind(null, clientId, l.id)}
+                        deleteAction={deleteHydrationLog.bind(null, clientId, l.id)}
+                        fields={[
+                          { name: "logged_date", label: "Date", type: "date", defaultValue: l.logged_date },
+                          { name: "oz_consumed", label: "Consumed (oz)", type: "number", step: "1", defaultValue: l.oz_consumed },
+                          { name: "oz_target", label: "Target (oz)", type: "number", step: "1", defaultValue: l.oz_target },
+                          { name: "notes", label: "Notes", type: "text", full: true, defaultValue: l.notes },
+                        ]}
+                      />
                     </li>
                   )
                 })}

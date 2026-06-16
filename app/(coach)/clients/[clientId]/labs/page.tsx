@@ -3,14 +3,19 @@ import { FlaskConical } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { getBiomarkers } from "@/lib/data/biomarkers"
-import { logBiomarkerAction } from "@/lib/actions/biomarkers"
+import {
+  logBiomarkerAction,
+  updateBiomarkerAction,
+  deleteBiomarkerAction,
+} from "@/lib/actions/biomarkers"
 import { BIOMARKER_CATEGORIES } from "@/lib/validations/biomarkers"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils/format"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MetricLineChart } from "@/components/charts/metric-line-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { LogRowActions } from "@/components/forms/log-row-actions"
 import type { BiomarkerSummary } from "@/types/models"
 
 const CHART_COLOR: Record<string, string> = {
@@ -104,6 +109,46 @@ export default async function LabsPage({
           </section>
         ))
       )}
+
+      {data.recent.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent readings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-border divide-y text-sm">
+              {data.recent.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 py-2.5">
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                    <span className="truncate font-medium">{r.label}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {r.value_num ?? r.value_text ?? "—"}
+                      {r.unit ? ` ${r.unit}` : ""} · {formatDate(r.measured_at)}
+                    </span>
+                  </div>
+                  <LogRowActions
+                    title="Edit lab reading"
+                    updateAction={updateBiomarkerAction.bind(null, clientId, r.id)}
+                    deleteAction={deleteBiomarkerAction.bind(null, clientId, r.id)}
+                    fields={[
+                      { name: "label", label: "Marker", type: "text", defaultValue: r.label },
+                      { name: "value_num", label: "Value (number)", type: "number", step: "0.01", defaultValue: r.value_num },
+                      { name: "unit", label: "Unit", type: "text", defaultValue: r.unit },
+                      {
+                        name: "category", label: "Category", type: "select",
+                        defaultValue: r.category,
+                        options: BIOMARKER_CATEGORIES.map((c) => ({ value: c, label: c })),
+                      },
+                      { name: "value_text", label: "Text value (optional)", type: "text", defaultValue: r.value_text },
+                      { name: "measured_at", label: "Measured at", type: "datetime-local", defaultValue: r.measured_at },
+                    ]}
+                  />
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <QuickLogForm
         title="Add lab reading"

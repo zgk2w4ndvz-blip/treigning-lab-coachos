@@ -3,11 +3,12 @@ import { HeartPulse } from "lucide-react"
 import { requireCoach } from "@/lib/auth"
 import { getRecoveryData } from "@/lib/data/logs"
 import { getClientComputedAlerts } from "@/lib/data/alerts"
-import { createRecoveryLog } from "@/lib/actions/logs"
+import { createRecoveryLog, updateRecoveryLog, deleteRecoveryLog } from "@/lib/actions/logs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MetricLineChart } from "@/components/charts/metric-line-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { LogRowActions } from "@/components/forms/log-row-actions"
 import { ModuleAlerts } from "@/components/shared/module-alerts"
 import { StatCard } from "@/components/shared/stat-card"
 import { RangeSelector } from "@/components/shared/range-selector"
@@ -112,12 +113,28 @@ export default async function RecoveryPage({
               <ul className="divide-border divide-y text-sm">
                 {recent.map((l) => (
                   <li key={l.id} className="flex items-center justify-between gap-2 py-2.5">
-                    <span>{l.logged_date}</span>
-                    <span className="text-muted-foreground flex gap-3 tabular-nums">
-                      <span>{l.sleep_hours != null ? `${l.sleep_hours}h` : "—"}</span>
-                      <span>E{l.energy ?? "—"}</span>
-                      <span>S{l.soreness ?? "—"}</span>
-                    </span>
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span>{l.logged_date}</span>
+                      <span className="text-muted-foreground flex gap-3 tabular-nums">
+                        <span>{l.sleep_hours != null ? `${l.sleep_hours}h` : "—"}</span>
+                        <span>E{l.energy ?? "—"}</span>
+                        <span>S{l.soreness ?? "—"}</span>
+                      </span>
+                    </div>
+                    <LogRowActions
+                      title="Edit recovery log"
+                      updateAction={updateRecoveryLog.bind(null, clientId, l.id)}
+                      deleteAction={deleteRecoveryLog.bind(null, clientId, l.id)}
+                      fields={[
+                        { name: "logged_date", label: "Date", type: "date", defaultValue: l.logged_date },
+                        { name: "sleep_hours", label: "Sleep (hours)", type: "number", step: "0.1", defaultValue: l.sleep_hours },
+                        { name: "sleep_quality", label: "Sleep quality (1–10)", type: "number", step: "1", defaultValue: l.sleep_quality },
+                        { name: "soreness", label: "Soreness (1–10)", type: "number", step: "1", defaultValue: l.soreness },
+                        { name: "energy", label: "Energy (1–10)", type: "number", step: "1", defaultValue: l.energy },
+                        { name: "stress", label: "Stress (1–10)", type: "number", step: "1", defaultValue: l.stress },
+                        { name: "notes", label: "Notes", type: "text", full: true, defaultValue: l.notes },
+                      ]}
+                    />
                   </li>
                 ))}
               </ul>

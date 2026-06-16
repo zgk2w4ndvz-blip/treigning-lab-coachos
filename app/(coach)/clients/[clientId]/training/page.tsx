@@ -3,12 +3,13 @@ import { Dumbbell, CheckCircle2, Circle } from "lucide-react"
 import { requireCoach } from "@/lib/auth"
 import { getTrainingData } from "@/lib/data/logs"
 import { getClientComputedAlerts } from "@/lib/data/alerts"
-import { createTrainingSession } from "@/lib/actions/logs"
+import { createTrainingSession, updateTrainingSession, deleteTrainingSession } from "@/lib/actions/logs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MetricBarChart } from "@/components/charts/metric-bar-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { LogRowActions } from "@/components/forms/log-row-actions"
 import { ModuleAlerts } from "@/components/shared/module-alerts"
 import { StatCard } from "@/components/shared/stat-card"
 import { RangeSelector } from "@/components/shared/range-selector"
@@ -120,6 +121,28 @@ export default async function TrainingPage({
                         </p>
                       </div>
                       {s.rpe != null ? <Badge variant="outline">RPE {s.rpe}</Badge> : null}
+                      <LogRowActions
+                        title="Edit training session"
+                        updateAction={updateTrainingSession.bind(null, clientId, s.id)}
+                        deleteAction={deleteTrainingSession.bind(null, clientId, s.id)}
+                        fields={[
+                          { name: "scheduled_at", label: "Date & time", type: "datetime-local", defaultValue: s.scheduled_at },
+                          {
+                            name: "session_type", label: "Type", type: "select",
+                            defaultValue: s.session_type ?? "strength",
+                            options: [
+                              { value: "strength", label: "Strength" },
+                              { value: "conditioning", label: "Conditioning" },
+                              { value: "technique", label: "Technique" },
+                              { value: "cardio", label: "Cardio" },
+                            ],
+                          },
+                          { name: "duration_min", label: "Duration (min)", type: "number", step: "1", defaultValue: s.duration_min },
+                          { name: "rpe", label: "RPE (1–10)", type: "number", step: "1", defaultValue: s.rpe },
+                          { name: "completed", label: "Completed", type: "checkbox", defaultValue: done ? "on" : "" },
+                          { name: "notes", label: "Notes", type: "text", full: true, defaultValue: s.notes },
+                        ]}
+                      />
                     </li>
                   )
                 })}

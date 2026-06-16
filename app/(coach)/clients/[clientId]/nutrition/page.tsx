@@ -3,13 +3,14 @@ import { Utensils } from "lucide-react"
 import { requireCoach } from "@/lib/auth"
 import { getNutritionData } from "@/lib/data/logs"
 import { getClientComputedAlerts } from "@/lib/data/alerts"
-import { createNutritionLog } from "@/lib/actions/logs"
+import { createNutritionLog, updateNutritionLog, deleteNutritionLog } from "@/lib/actions/logs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ComplianceBar } from "@/components/shared/compliance-bar"
 import { MetricBarChart } from "@/components/charts/metric-bar-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { LogRowActions } from "@/components/forms/log-row-actions"
 import { ModuleAlerts } from "@/components/shared/module-alerts"
 import { StatCard } from "@/components/shared/stat-card"
 import { RangeSelector } from "@/components/shared/range-selector"
@@ -151,12 +152,28 @@ export default async function NutritionPage({
               <ul className="divide-border divide-y text-sm">
                 {recent.map((l) => (
                   <li key={l.id} className="flex items-center justify-between gap-2 py-2.5">
-                    <span>{l.logged_date}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {l.calories ?? "—"} kcal · P{l.protein_g != null ? Math.round(l.protein_g) : "—"} C
-                      {l.carbs_g != null ? Math.round(l.carbs_g) : "—"} F
-                      {l.fat_g != null ? Math.round(l.fat_g) : "—"}
-                    </span>
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span>{l.logged_date}</span>
+                      <span className="text-muted-foreground tabular-nums">
+                        {l.calories ?? "—"} kcal · P{l.protein_g != null ? Math.round(l.protein_g) : "—"} C
+                        {l.carbs_g != null ? Math.round(l.carbs_g) : "—"} F
+                        {l.fat_g != null ? Math.round(l.fat_g) : "—"}
+                      </span>
+                    </div>
+                    <LogRowActions
+                      title="Edit nutrition log"
+                      updateAction={updateNutritionLog.bind(null, clientId, l.id)}
+                      deleteAction={deleteNutritionLog.bind(null, clientId, l.id)}
+                      fields={[
+                        { name: "logged_date", label: "Date", type: "date", defaultValue: l.logged_date },
+                        { name: "meal_label", label: "Label", type: "text", defaultValue: l.meal_label },
+                        { name: "calories", label: "Calories", type: "number", step: "1", defaultValue: l.calories },
+                        { name: "protein_g", label: "Protein (g)", type: "number", step: "1", defaultValue: l.protein_g },
+                        { name: "carbs_g", label: "Carbs (g)", type: "number", step: "1", defaultValue: l.carbs_g },
+                        { name: "fat_g", label: "Fat (g)", type: "number", step: "1", defaultValue: l.fat_g },
+                        { name: "notes", label: "Notes", type: "text", full: true, defaultValue: l.notes },
+                      ]}
+                    />
                   </li>
                 ))}
               </ul>

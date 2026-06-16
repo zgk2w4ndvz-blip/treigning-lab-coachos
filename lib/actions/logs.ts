@@ -167,6 +167,141 @@ export async function createTrainingSession(
   return { ok: true }
 }
 
+// ---------------------------------------------------------------------------
+// Edit / delete for coach-entered log rows. RLS-safe: the user-scoped Supabase
+// client only mutates rows the coach owns (per-athlete log update/delete policy
+// = coach). Scoped by .eq("id").eq("client_id"). These touch ONLY the log row —
+// never any originating message_ingest / suggested_actions / prescription, so
+// approved-suggestion and source-message history is preserved.
+// ---------------------------------------------------------------------------
+
+async function deleteLogRow(
+  table: "nutrition_logs" | "hydration_logs" | "recovery_logs" | "training_sessions",
+  revalidate: string,
+  clientId: string,
+  id: string
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_BLOCKED
+  await guard()
+  const supabase = await createServerSupabase()
+  const { error } = await supabase.from(table).delete().eq("id", id).eq("client_id", clientId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(revalidate)
+  return { ok: true }
+}
+
+export async function updateNutritionLog(
+  clientId: string,
+  id: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_BLOCKED
+  await guard()
+  const r = parse(nutritionLogSchema, formData)
+  if (!r.success) return fieldErrors(r.error)
+  const supabase = await createServerSupabase()
+  const { error } = await supabase
+    .from("nutrition_logs")
+    .update({
+      logged_date: r.data.logged_date, meal_label: r.data.meal_label,
+      calories: r.data.calories, protein_g: r.data.protein_g,
+      carbs_g: r.data.carbs_g, fat_g: r.data.fat_g, notes: r.data.notes,
+    })
+    .eq("id", id).eq("client_id", clientId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}/nutrition`)
+  return { ok: true }
+}
+
+export async function deleteNutritionLog(clientId: string, id: string) {
+  return deleteLogRow("nutrition_logs", `/clients/${clientId}/nutrition`, clientId, id)
+}
+
+export async function updateHydrationLog(
+  clientId: string,
+  id: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_BLOCKED
+  await guard()
+  const r = parse(hydrationLogSchema, formData)
+  if (!r.success) return fieldErrors(r.error)
+  const supabase = await createServerSupabase()
+  const { error } = await supabase
+    .from("hydration_logs")
+    .update({
+      logged_date: r.data.logged_date, oz_consumed: r.data.oz_consumed,
+      oz_target: r.data.oz_target, notes: r.data.notes,
+    })
+    .eq("id", id).eq("client_id", clientId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}/hydration`)
+  return { ok: true }
+}
+
+export async function deleteHydrationLog(clientId: string, id: string) {
+  return deleteLogRow("hydration_logs", `/clients/${clientId}/hydration`, clientId, id)
+}
+
+export async function updateRecoveryLog(
+  clientId: string,
+  id: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_BLOCKED
+  await guard()
+  const r = parse(recoveryLogSchema, formData)
+  if (!r.success) return fieldErrors(r.error)
+  const supabase = await createServerSupabase()
+  const { error } = await supabase
+    .from("recovery_logs")
+    .update({
+      logged_date: r.data.logged_date, sleep_hours: r.data.sleep_hours,
+      sleep_quality: r.data.sleep_quality, soreness: r.data.soreness,
+      energy: r.data.energy, stress: r.data.stress, notes: r.data.notes,
+    })
+    .eq("id", id).eq("client_id", clientId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}/recovery`)
+  return { ok: true }
+}
+
+export async function deleteRecoveryLog(clientId: string, id: string) {
+  return deleteLogRow("recovery_logs", `/clients/${clientId}/recovery`, clientId, id)
+}
+
+export async function updateTrainingSession(
+  clientId: string,
+  id: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_BLOCKED
+  await guard()
+  const r = parse(trainingSessionSchema, formData)
+  if (!r.success) return fieldErrors(r.error)
+  const supabase = await createServerSupabase()
+  const { error } = await supabase
+    .from("training_sessions")
+    .update({
+      scheduled_at: r.data.scheduled_at,
+      completed_at: r.data.completed ? r.data.scheduled_at : null,
+      session_type: r.data.session_type, duration_min: r.data.duration_min,
+      rpe: r.data.rpe, notes: r.data.notes,
+    })
+    .eq("id", id).eq("client_id", clientId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}/training`)
+  return { ok: true }
+}
+
+export async function deleteTrainingSession(clientId: string, id: string) {
+  return deleteLogRow("training_sessions", `/clients/${clientId}/training`, clientId, id)
+}
+
 export async function createSupplement(
   clientId: string,
   _prev: ActionState,

@@ -100,12 +100,24 @@ function summarize(readings: BiomarkerReading[]): BiomarkerCategoryGroup[] {
     })
 }
 
+/** Newest-first, capped — backs the editable "Recent readings" list. */
+function recentReadings(readings: BiomarkerReading[]): BiomarkerReading[] {
+  return [...readings]
+    .sort((a, b) => b.measured_at.localeCompare(a.measured_at))
+    .slice(0, 12)
+}
+
 function bypass(clientId: string): BiomarkersData | null {
   const client = getBypassClientById(clientId) ?? getMockClient(clientId)
   if (!client) return null
   const stored = getStoredBiomarkers(clientId).map((b) => storedToReading(clientId, b))
   const readings = [...mockBiomarkers(clientId), ...stored]
-  return { client, groups: summarize(readings), totalReadings: readings.length }
+  return {
+    client,
+    groups: summarize(readings),
+    totalReadings: readings.length,
+    recent: recentReadings(readings),
+  }
 }
 
 async function real(clientId: string): Promise<BiomarkersData | null> {
@@ -125,6 +137,7 @@ async function real(clientId: string): Promise<BiomarkersData | null> {
     client,
     groups: summarize(readings ?? []),
     totalReadings: (readings ?? []).length,
+    recent: recentReadings(readings ?? []),
   }
 }
 

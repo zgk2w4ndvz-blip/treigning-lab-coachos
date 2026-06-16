@@ -397,6 +397,8 @@ export interface BiomarkersData {
   client: Client
   groups: BiomarkerCategoryGroup[]
   totalReadings: number
+  /** Newest-first raw readings for the editable "Recent readings" list. */
+  recent: BiomarkerReading[]
 }
 
 // ---- Message ingestion / approval queue ------------------------------------

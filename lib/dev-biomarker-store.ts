@@ -53,3 +53,27 @@ export function addStoredBiomarker(clientId: string, b: StoredBiomarker): void {
   const store = read()
   write({ ...store, [clientId]: [...(store[clientId] ?? []), b] })
 }
+
+/** Update a stored biomarker reading. Returns true if a row matched. */
+export function updateStoredBiomarker(
+  clientId: string,
+  id: string,
+  patch: Omit<StoredBiomarker, "id">
+): boolean {
+  const store = read()
+  const list = store[clientId] ?? []
+  let found = false
+  const next = list.map((b) => (b.id === id ? ((found = true), { ...patch, id }) : b))
+  if (found) write({ ...store, [clientId]: next })
+  return found
+}
+
+/** Delete a stored biomarker reading. Returns true if a row was removed. */
+export function deleteStoredBiomarker(clientId: string, id: string): boolean {
+  const store = read()
+  const list = store[clientId] ?? []
+  const next = list.filter((b) => b.id !== id)
+  if (next.length === list.length) return false
+  write({ ...store, [clientId]: next })
+  return true
+}
