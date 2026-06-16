@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CoachOS iMessage bridge — launchd job (example).
+
+  Runs `npm run bridge:sync` every 5 minutes (StartInterval 300). EDIT the two
+  REPLACE_ME paths below, then install:
+
+    cp tools/imessage-bridge/com.coachos.bridge.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.coachos.bridge.plist
+
+  Unload with:
+    launchctl unload ~/Library/LaunchAgents/com.coachos.bridge.plist
+
+  NOTE: the *runner* (here /bin/zsh) needs Full Disk Access to read chat.db —
+  grant it in System Settings → Privacy & Security → Full Disk Access.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.coachos.bridge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <!-- REPLACE_ME: absolute path to your checkout of this repo -->
+      <string>cd /Users/REPLACE_ME/treigning-lab-coachos &amp;&amp; npm run bridge:sync</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- REPLACE_ME: log paths for stdout/stderr -->
+    <key>StandardOutPath</key>
+    <string>/Users/REPLACE_ME/.coachos-bridge/bridge.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/REPLACE_ME/.coachos-bridge/bridge.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+  </dict>
+</plist>

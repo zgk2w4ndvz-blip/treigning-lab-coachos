@@ -16,7 +16,9 @@
     "import:scrape": "tsx tools/treigning-import/scrape.ts",
     "import:transform": "tsx tools/treigning-import/transform.ts",
     "import:dry-run": "tsx tools/treigning-import/upsert.ts",
-    "import:apply": "tsx tools/treigning-import/upsert.ts --apply"
+    "import:apply": "tsx tools/treigning-import/upsert.ts --apply",
+    "bridge:sync": "tsx tools/imessage-bridge/sync.ts",
+    "bridge:dry-run": "tsx tools/imessage-bridge/sync.ts --dry-run --verbose"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
