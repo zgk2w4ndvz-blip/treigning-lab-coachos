@@ -20,7 +20,7 @@ import type { ReviewQueueItem, SuggestionDomain } from "@/types/models"
 const DOMAIN_LABELS: Record<SuggestionDomain, string> = {
   diet: "Diet", supplementation: "Supplementation", altolab: "AltoLab",
   low_base: "Low base", hydration: "Hydration", recovery: "Recovery",
-  labs: "Labs", training: "Training",
+  labs: "Labs", training: "Training", body_composition: "Body Composition",
 }
 
 export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {

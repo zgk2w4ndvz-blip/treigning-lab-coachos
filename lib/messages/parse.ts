@@ -76,7 +76,7 @@ function fromObject(o: Record<string, unknown>, fallbackSource: MessageSource): 
   }
 }
 
-export type MessageFormat = "csv" | "json" | "whatsapp"
+export type MessageFormat = "csv" | "json" | "whatsapp" | "imessage"
 
 /** Parse pasted/uploaded messages. Auto-detects JSON vs CSV; whatsapp is explicit. */
 export function parseMessages(text: string, formatHint?: MessageFormat): ParseResult {
@@ -84,9 +84,10 @@ export function parseMessages(text: string, formatHint?: MessageFormat): ParseRe
   const trimmed = (text ?? "").trim()
   if (!trimmed) return { messages: [], errors: ["No message content provided."] }
 
-  if (formatHint === "whatsapp") {
-    const messages = parseChatExport(trimmed, "whatsapp")
-    return { messages, errors: messages.length ? [] : ["No messages found in the chat export."] }
+  if (formatHint === "whatsapp" || formatHint === "imessage") {
+    const src = formatHint === "imessage" ? "imessage" : "whatsapp"
+    const messages = parseChatExport(trimmed, src)
+    return { messages, errors: messages.length ? [] : ["No messages found in the chat transcript."] }
   }
 
   const isJson = formatHint === "json" || (!formatHint && /^[[{]/.test(trimmed))

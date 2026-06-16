@@ -419,6 +419,8 @@ export interface ReviewQueueItem {
   messageSnippet: string
   receivedAt: string | null
   createdAt: string
+  /** Structured payload for typed suggestions (e.g. weight-log entries). */
+  details?: Record<string, unknown> | null
 }
 
 export interface InboxStats {

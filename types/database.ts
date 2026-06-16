@@ -52,6 +52,7 @@ export type SuggestionDomain =
   | "recovery"
   | "labs"
   | "training"
+  | "body_composition"
 export type SuggestionStatus = "pending" | "approved" | "edited" | "rejected"
 export type PrescriptionStatus = "active" | "completed" | "cancelled"
 export type CalendarCategory =

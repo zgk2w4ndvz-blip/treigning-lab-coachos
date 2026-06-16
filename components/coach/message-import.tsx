@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 
 const SAMPLE = `source,sender_name,sender_phone,sender_email,received_at,body
+imessage,Julian Ramirez,(555) 333-1212,,2026-06-15,"Morning weight 128.4, evening 130.1"
 imessage,Jordan Vance,(555) 201-7788,,2026-06-14,"Cramping late in sessions — should I add electrolytes and more water?"
 gmail,Maya Okafor,,maya.okafor@example.com,2026-06-14,"Can I bump creatine to 10g and add magnesium at night?"
 sms,,+1 555 999 0000,,2026-06-13,"Super sore and slept badly, think I need a lighter day"`
@@ -21,7 +22,7 @@ sms,,+1 555 999 0000,,2026-06-13,"Super sore and slept badly, think I need a lig
 export function MessageImport() {
   const router = useRouter()
   const [text, setText] = useState("")
-  const [format, setFormat] = useState<"auto" | "csv" | "json" | "whatsapp">("auto")
+  const [format, setFormat] = useState<"auto" | "csv" | "json" | "whatsapp" | "imessage">("auto")
   const [pending, start] = useTransition()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -66,10 +67,14 @@ export function MessageImport() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-muted-foreground text-sm">
-          Paste or upload a CSV/JSON export (Gmail, SMS/iMessage, WhatsApp, or manual).
-          Columns: <code className="text-xs">source, sender_name, sender_phone, sender_email, received_at, body</code>.
-          Messages are matched to athletes and classified into suggested actions —
-          nothing is prescribed until you approve it.
+          Paste an <strong>iMessage</strong>/WhatsApp transcript, or a CSV/JSON export
+          (Gmail, SMS, manual). For CSV/JSON use columns{" "}
+          <code className="text-xs">source, sender_name, sender_phone, sender_email, received_at, body</code>.
+          Messages are matched to athletes (phone → email → name) and analyzed for
+          signals like body weight, supplement compliance, hydration, AltoLab, Low
+          Base, recovery, and injuries. A reported weight (e.g.{" "}
+          <em>&ldquo;morning weight 128.4, evening 130.1&rdquo;</em>) becomes a
+          suggested weight-log entry — <strong>nothing is written until you approve it.</strong>
         </p>
         <input
           ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json,text/plain"
@@ -95,6 +100,7 @@ export function MessageImport() {
               <SelectItem value="csv">CSV</SelectItem>
               <SelectItem value="json">JSON</SelectItem>
               <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              <SelectItem value="imessage">iMessage</SelectItem>
             </SelectContent>
           </Select>
         </div>

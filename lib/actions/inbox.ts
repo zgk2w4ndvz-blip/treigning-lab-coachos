@@ -33,6 +33,7 @@ const DOMAIN_TASK_TYPE: Record<SuggestionDomain, TaskType> = {
   recovery: "recovery",
   labs: "general",
   training: "training",
+  body_composition: "general",
 }
 
 export interface IngestResult extends ActionState {
@@ -147,30 +148,61 @@ export async function reviewSuggestionAction(
           .from("suggested_actions").select("*").eq("id", id).single()
         if (sErr || !s) return { ok: false, error: sErr?.message ?? "Suggestion not found." }
         if (!s.client_id) return { ok: false, error: "Match this message to an athlete before approving." }
-        const protocol = edited ? editedProtocol!.trim() : s.suggested_protocol
-        const { data: presc, error: pErr } = await supabase
-          .from("prescriptions")
-          .insert({
-            coach_id: coach.id, client_id: s.client_id, domain: s.domain,
-            title: s.intent ?? s.domain, protocol, source_suggestion_id: s.id, status: "active",
-          })
-          .select("id").single()
-        if (pErr || !presc) return { ok: false, error: pErr?.message ?? "Could not create prescription." }
-        const { error: uErr } = await supabase
-          .from("suggested_actions")
-          .update({
-            status: edited ? "edited" : "approved", reviewed_by: coach.id,
-            reviewed_at: now, prescription_id: presc.id, suggested_protocol: protocol,
-          })
-          .eq("id", id)
-        if (uErr) return { ok: false, error: uErr.message }
 
-        // Mint a coach task so the approval shows on /tasks + the agenda.
-        await supabase.from("tasks").insert({
-          coach_id: coach.id, client_id: s.client_id, title: protocol,
-          description: `Approved from a ${s.domain} message suggestion.`,
-          priority: s.sensitive ? "high" : "medium", status: "open",
-        })
+        const details = s.details as unknown as
+          | { action?: string; entries?: { label?: string; weightLbs?: number }[] }
+          | null
+
+        if (details?.action === "create_weight_log" && Array.isArray(details.entries)) {
+          // Structured body-weight report → write weight_logs (NOT a prescription).
+          const { data: msg } = await supabase
+            .from("message_ingest").select("received_at, source").eq("id", s.message_id).single()
+          const baseDate = msg?.received_at ? new Date(msg.received_at) : new Date()
+          const rows = details.entries
+            .filter((e) => typeof e.weightLbs === "number")
+            .map((e) => {
+              const at = new Date(baseDate)
+              at.setHours(e.label === "morning" ? 7 : e.label === "evening" ? 19 : 12, 0, 0, 0)
+              const tod = e.label && e.label !== "general" ? ` (${e.label})` : ""
+              return {
+                client_id: s.client_id!, logged_by: coach.id, weight_lbs: e.weightLbs!,
+                logged_at: at.toISOString(), notes: `From ${msg?.source ?? "message"}${tod}`,
+              }
+            })
+          if (rows.length === 0) return { ok: false, error: "No valid weight values to log." }
+          const { error: wErr } = await supabase.from("weight_logs").insert(rows)
+          if (wErr) return { ok: false, error: wErr.message }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else {
+          const protocol = edited ? editedProtocol!.trim() : s.suggested_protocol
+          const { data: presc, error: pErr } = await supabase
+            .from("prescriptions")
+            .insert({
+              coach_id: coach.id, client_id: s.client_id, domain: s.domain,
+              title: s.intent ?? s.domain, protocol, source_suggestion_id: s.id, status: "active",
+            })
+            .select("id").single()
+          if (pErr || !presc) return { ok: false, error: pErr?.message ?? "Could not create prescription." }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({
+              status: edited ? "edited" : "approved", reviewed_by: coach.id,
+              reviewed_at: now, prescription_id: presc.id, suggested_protocol: protocol,
+            })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+
+          // Mint a coach task so the approval shows on /tasks + the agenda.
+          await supabase.from("tasks").insert({
+            coach_id: coach.id, client_id: s.client_id, title: protocol,
+            description: `Approved from a ${s.domain} message suggestion.`,
+            priority: s.sensitive ? "high" : "medium", status: "open",
+          })
+        }
       }
     }
   } catch (e) {

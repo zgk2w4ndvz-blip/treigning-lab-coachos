@@ -12,6 +12,12 @@ export interface ClassifiedSuggestion {
   suggestedProtocol: string
   confidence: number
   sensitive: boolean
+  /**
+   * Structured payload for suggestions that map to a concrete record on
+   * approval (e.g. { action: "create_weight_log", entries: [...] }). Plain
+   * domain suggestions leave this undefined and approve into a prescription.
+   */
+  details?: Record<string, unknown>
 }
 
 interface DomainRule {

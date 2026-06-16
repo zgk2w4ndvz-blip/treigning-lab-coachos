@@ -14,11 +14,12 @@ import { createAdminSupabase } from "@/lib/supabase/admin"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
-import { classifyMessage } from "@/lib/messages/classify"
+import { analyzeMessage } from "@/lib/messages/analyze"
 import { matchAthlete, type MatchClient } from "@/lib/messages/match"
 import type { ParsedMessage } from "@/lib/messages/parse"
 import { fullName } from "@/lib/utils/format"
 import type { ReviewQueueItem } from "@/types/models"
+import type { Json } from "@/types/database"
 
 export interface IngestSummary {
   messageCount: number
@@ -46,11 +47,12 @@ function ingestBypass(messages: ParsedMessage[]): IngestSummary {
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
-    for (const s of classifyMessage(m.body)) {
+    for (const s of analyzeMessage(m.body)) {
       created.push({
         id: randomUUID(),
         domain: s.domain, intent: s.intent, suggestedProtocol: s.suggestedProtocol,
         confidence: s.confidence, sensitive: s.sensitive, status: "pending",
+        details: s.details ?? null,
         clientId: match.clientId,
         athleteName: match.clientId ? nameById.get(match.clientId) ?? null : null,
         matchMethod: match.method, matchConfidence: match.confidence,
@@ -100,13 +102,14 @@ export async function runIngest(
       })
       .select("id").single()
     if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
-    const suggestions = classifyMessage(m.body)
+    const suggestions = analyzeMessage(m.body)
     if (suggestions.length) {
       const { error: sErr } = await supabase.from("suggested_actions").insert(
         suggestions.map((s) => ({
           coach_id: coachId, client_id: match.clientId, message_id: msg.id,
           domain: s.domain, intent: s.intent, suggested_protocol: s.suggestedProtocol,
           confidence: s.confidence, sensitive: s.sensitive, status: "pending" as const,
+          details: (s.details ?? null) as Json,
         }))
       )
       if (sErr) errors.push(`Suggestions skipped: ${sErr.message}`)
