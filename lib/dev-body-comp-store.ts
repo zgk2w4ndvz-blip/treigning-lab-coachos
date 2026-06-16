@@ -60,3 +60,27 @@ export function addStoredMeasurement(
   const list = [...(store[clientId] ?? []), m]
   write({ ...store, [clientId]: list })
 }
+
+/** Update a stored measurement in place. Returns true if a row matched. */
+export function updateStoredMeasurement(
+  clientId: string,
+  id: string,
+  patch: Omit<StoredMeasurement, "id">
+): boolean {
+  const store = read()
+  const list = store[clientId] ?? []
+  let found = false
+  const next = list.map((m) => (m.id === id ? ((found = true), { ...patch, id }) : m))
+  if (found) write({ ...store, [clientId]: next })
+  return found
+}
+
+/** Delete a stored measurement. Returns true if a row was removed. */
+export function deleteStoredMeasurement(clientId: string, id: string): boolean {
+  const store = read()
+  const list = store[clientId] ?? []
+  const next = list.filter((m) => m.id !== id)
+  if (next.length === list.length) return false
+  write({ ...store, [clientId]: next })
+  return true
+}

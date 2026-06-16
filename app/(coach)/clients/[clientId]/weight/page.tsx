@@ -16,6 +16,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state"
 import { MetricLineChart } from "@/components/charts/metric-line-chart"
 import { QuickLogForm } from "@/components/forms/quick-log-form"
+import { BodyCompRowActions } from "@/components/forms/body-comp-row-actions"
 import { ModuleAlerts } from "@/components/shared/module-alerts"
 import { RangeSelector } from "@/components/shared/range-selector"
 import { parseRange } from "@/lib/utils/range"
@@ -177,6 +178,7 @@ export default async function BodyCompositionPage({
                       <TableHead className="text-right">SMM</TableHead>
                       <TableHead className="text-right">TBW</TableHead>
                       <TableHead className="text-right">BMR</TableHead>
+                      <TableHead className="w-[72px] text-right">Edit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -205,6 +207,9 @@ export default async function BodyCompositionPage({
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {l.bmr ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <BodyCompRowActions clientId={clientId} log={l} />
                         </TableCell>
                       </TableRow>
                     ))}
