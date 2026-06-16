@@ -1,14 +1,32 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { Check, ChevronLeft, ChevronRight, MinusCircle, Plus, RotateCcw, X } from "lucide-react"
 
 import { expandOccurrences } from "@/lib/calendar/recurrence"
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/calendar/categories"
+import {
+  setOccurrenceStatusAction,
+  clearOccurrenceStatusAction,
+} from "@/lib/actions/athlete-calendar"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { CalendarEventDialog } from "@/components/calendar/calendar-event-dialog"
-import type { AthleteCalendarEvent, CalendarOccurrence } from "@/types/models"
+import type {
+  AthleteCalendarEvent,
+  AthleteCalendarEventOverride,
+  CalendarOccurrence,
+  CalendarStatus,
+} from "@/types/models"
 
 type View = "day" | "week" | "month" | "year"
 const VIEWS: View[] = ["day", "week", "month", "year"]
@@ -42,7 +60,17 @@ function title(view: View, c: Date): string {
   return String(c.getFullYear())
 }
 
-export function AthleteCalendar({ clientId, events }: { clientId: string; events: AthleteCalendarEvent[] }) {
+export function AthleteCalendar({
+  clientId,
+  events,
+  overrides = [],
+}: {
+  clientId: string
+  events: AthleteCalendarEvent[]
+  overrides?: AthleteCalendarEventOverride[]
+}) {
+  const router = useRouter()
+  const [, startTx] = useTransition()
   const [view, setView] = useState<View>("month")
   const [cursor, setCursor] = useState(() => startOfDay(new Date()))
   const [dialog, setDialog] = useState<{ open: boolean; event: AthleteCalendarEvent | null; date: string | null }>({ open: false, event: null, date: null })
@@ -50,16 +78,30 @@ export function AthleteCalendar({ clientId, events }: { clientId: string; events
   const byDate = useMemo(() => {
     const [rs, re] = rangeFor(view, cursor)
     const map = new Map<string, CalendarOccurrence[]>()
-    for (const o of expandOccurrences(events, rs, re)) {
+    for (const o of expandOccurrences(events, rs, re, overrides)) {
       const list = map.get(o.date)
       if (list) list.push(o)
       else map.set(o.date, [o])
     }
     return map
-  }, [events, view, cursor])
+  }, [events, overrides, view, cursor])
 
   const openNew = (date: string | null) => setDialog({ open: true, event: null, date })
   const openEdit = (ev: AthleteCalendarEvent) => setDialog({ open: true, event: ev, date: null })
+
+  const setStatus = (occ: CalendarOccurrence, status: CalendarStatus) =>
+    startTx(async () => {
+      const res = await setOccurrenceStatusAction(clientId, occ.event.id, occ.date, status)
+      if (res.ok) { toast.success(`Marked ${status}`); router.refresh() }
+      else toast.error(res.error ?? "Failed")
+    })
+
+  const resetStatus = (occ: CalendarOccurrence) =>
+    startTx(async () => {
+      const res = await clearOccurrenceStatusAction(clientId, occ.event.id, occ.date)
+      if (res.ok) { toast.success("Reset to default"); router.refresh() }
+      else toast.error(res.error ?? "Failed")
+    })
 
   return (
     <div className="space-y-4">
@@ -93,10 +135,10 @@ export function AthleteCalendar({ clientId, events }: { clientId: string; events
         ))}
       </div>
 
-      {view === "day" && <DayView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} />}
-      {view === "week" && <WeekView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} />}
-      {view === "month" && <MonthView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} />}
-      {view === "year" && <YearView cursor={cursor} events={events} onPick={(d) => { setCursor(d); setView("month") }} />}
+      {view === "day" && <DayView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "week" && <WeekView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "month" && <MonthView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "year" && <YearView cursor={cursor} events={events} overrides={overrides} onPick={(d) => { setCursor(d); setView("month") }} />}
 
       <CalendarEventDialog
         clientId={clientId}
@@ -109,23 +151,58 @@ export function AthleteCalendar({ clientId, events }: { clientId: string; events
   )
 }
 
-function Chip({ occ, onEdit }: { occ: CalendarOccurrence; onEdit: (e: AthleteCalendarEvent) => void }) {
+const STATUS_ICON: Partial<Record<CalendarStatus, typeof Check>> = {
+  completed: Check,
+  skipped: MinusCircle,
+  missed: X,
+}
+
+function Chip({ occ, onEdit, onStatus, onReset }: ChipProps) {
   const meta = CATEGORY_META[occ.event.category]
+  const StatusIcon = STATUS_ICON[occ.status]
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onEdit(occ.event) }}
-      className={cn(
-        "block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium",
-        meta.chip,
-        occ.event.status === "completed" && "line-through opacity-60",
-        occ.event.status === "skipped" && "opacity-40"
-      )}
-      title={occ.event.title}
-    >
-      {!occ.event.all_day ? `${new Date(occ.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ` : ""}
-      {occ.event.title}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium",
+            meta.chip,
+            occ.status === "completed" && "line-through opacity-60",
+            occ.status === "skipped" && "opacity-40",
+            occ.status === "missed" && "line-through decoration-red-500 decoration-2 opacity-70"
+          )}
+          title={occ.event.title}
+        >
+          {StatusIcon ? <StatusIcon className="size-3 shrink-0" /> : null}
+          <span className="truncate">
+            {!occ.event.all_day ? `${new Date(occ.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ` : ""}
+            {occ.event.title}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => onEdit(occ.event)}>Edit details…</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onStatus(occ, "completed")}><Check className="size-4" /> Mark complete</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onStatus(occ, "skipped")}><MinusCircle className="size-4" /> Mark skipped</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onStatus(occ, "missed")}><X className="size-4" /> Mark missed</DropdownMenuItem>
+        {occ.override ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onReset(occ)}><RotateCcw className="size-4" /> Reset to default</DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
+}
+
+type ChipProps = {
+  occ: CalendarOccurrence
+  onEdit: (e: AthleteCalendarEvent) => void
+  onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
+  onReset: (occ: CalendarOccurrence) => void
 }
 
 type ViewProps = {
@@ -133,9 +210,11 @@ type ViewProps = {
   byDate: Map<string, CalendarOccurrence[]>
   onAdd: (date: string | null) => void
   onEdit: (e: AthleteCalendarEvent) => void
+  onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
+  onReset: (occ: CalendarOccurrence) => void
 }
 
-function DayView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
+function DayView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const list = byDate.get(dateKey(cursor)) ?? []
   return (
     <div className="space-y-2 rounded-lg border p-4">
@@ -144,7 +223,7 @@ function DayView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
       ) : (
         list.map((o) => (
           <div key={o.key} className="space-y-1">
-            <Chip occ={o} onEdit={onEdit} />
+            <Chip occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />
             {o.event.description ? <p className="text-muted-foreground pl-1.5 text-xs">{o.event.description}</p> : null}
           </div>
         ))
@@ -153,7 +232,7 @@ function DayView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
   )
 }
 
-function WeekView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
+function WeekView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const start = startOfWeek(cursor)
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
   return (
@@ -164,7 +243,7 @@ function WeekView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
         return (
           <div key={key} className={cn("min-h-28 cursor-pointer rounded-lg border p-2", key === TODAY_KEY && "border-primary")} onClick={() => onAdd(key)}>
             <p className="text-muted-foreground mb-1 text-xs font-medium">{WEEKDAYS[d.getDay()]} {d.getDate()}</p>
-            <div className="space-y-1">{list.map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} />)}</div>
+            <div className="space-y-1">{list.map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}</div>
           </div>
         )
       })}
@@ -172,7 +251,7 @@ function WeekView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
   )
 }
 
-function MonthView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
+function MonthView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const gridStart = startOfWeek(startOfMonth(cursor))
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
   return (
@@ -190,7 +269,7 @@ function MonthView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
               className={cn("min-h-24 cursor-pointer border-t border-l p-1 [&:nth-child(7n+1)]:border-l-0", muted && "bg-muted/30")}>
               <p className={cn("text-right text-[11px]", key === TODAY_KEY ? "text-primary font-bold" : muted ? "text-muted-foreground/50" : "text-muted-foreground")}>{d.getDate()}</p>
               <div className="mt-0.5 space-y-0.5">
-                {list.slice(0, 3).map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} />)}
+                {list.slice(0, 3).map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}
                 {list.length > 3 ? <p className="text-muted-foreground pl-1 text-[10px]">+{list.length - 3} more</p> : null}
               </div>
             </div>
@@ -201,15 +280,15 @@ function MonthView({ cursor, byDate, onAdd, onEdit }: ViewProps) {
   )
 }
 
-function YearView({ cursor, events, onPick }: { cursor: Date; events: AthleteCalendarEvent[]; onPick: (d: Date) => void }) {
+function YearView({ cursor, events, overrides, onPick }: { cursor: Date; events: AthleteCalendarEvent[]; overrides: AthleteCalendarEventOverride[]; onPick: (d: Date) => void }) {
   const year = cursor.getFullYear()
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarOccurrence[]>()
-    for (const o of expandOccurrences(events, new Date(year, 0, 1), new Date(year + 1, 0, 1))) {
+    for (const o of expandOccurrences(events, new Date(year, 0, 1), new Date(year + 1, 0, 1), overrides)) {
       const l = map.get(o.date); if (l) l.push(o); else map.set(o.date, [o])
     }
     return map
-  }, [events, year])
+  }, [events, overrides, year])
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

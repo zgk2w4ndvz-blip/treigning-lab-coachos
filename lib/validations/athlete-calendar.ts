@@ -2,8 +2,8 @@ import { z } from "zod"
 
 export const CALENDAR_CATEGORIES = [
   "strength", "conditioning", "sport", "low_base", "supplementation", "altolab",
-  "nutrition", "hydration", "recovery", "testing", "weigh_in", "competition",
-  "check_in", "note",
+  "nutrition", "hydration", "recovery", "testing", "labs", "weigh_in",
+  "competition", "check_in", "note",
 ] as const
 
 const optText = z

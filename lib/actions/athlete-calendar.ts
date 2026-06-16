@@ -7,6 +7,14 @@ import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { calendarEventSchema } from "@/lib/validations/athlete-calendar"
 import type { ActionState } from "@/lib/actions/types"
+import type { CalendarStatus } from "@/types/models"
+
+const OCCURRENCE_STATUSES: CalendarStatus[] = [
+  "planned",
+  "completed",
+  "skipped",
+  "missed",
+]
 
 const BYPASS_NOTICE: ActionState = {
   ok: false,
@@ -126,6 +134,68 @@ export async function duplicateCalendarEventAction(
     if (error) return { ok: false, error: error.message }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Duplicate failed." }
+  }
+  revalidate(clientId)
+  return { ok: true }
+}
+
+/**
+ * Set the status of a single occurrence of an event (recurring or not) without
+ * touching the parent definition or other occurrences. Upserts a row in
+ * athlete_calendar_event_overrides keyed by (event_id, occurrence_date).
+ */
+export async function setOccurrenceStatusAction(
+  clientId: string,
+  eventId: string,
+  occurrenceDate: string, // yyyy-MM-dd
+  status: CalendarStatus
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_NOTICE
+  if (!OCCURRENCE_STATUSES.includes(status)) {
+    return { ok: false, error: "Invalid status." }
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate)) {
+    return { ok: false, error: "Invalid occurrence date." }
+  }
+  try {
+    const supabase = await createServerSupabase()
+    // Omit `notes` so the upsert preserves any existing note on conflict.
+    const { error } = await supabase
+      .from("athlete_calendar_event_overrides")
+      .upsert(
+        {
+          event_id: eventId,
+          occurrence_date: occurrenceDate,
+          status,
+          completed_at: status === "completed" ? new Date().toISOString() : null,
+        },
+        { onConflict: "event_id,occurrence_date" }
+      )
+    if (error) return { ok: false, error: error.message }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed." }
+  }
+  revalidate(clientId)
+  return { ok: true }
+}
+
+/** Clear an occurrence override, reverting that day to the series default. */
+export async function clearOccurrenceStatusAction(
+  clientId: string,
+  eventId: string,
+  occurrenceDate: string
+): Promise<ActionState> {
+  if (DEV_AUTH_BYPASS) return BYPASS_NOTICE
+  try {
+    const supabase = await createServerSupabase()
+    const { error } = await supabase
+      .from("athlete_calendar_event_overrides")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("occurrence_date", occurrenceDate)
+    if (error) return { ok: false, error: error.message }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Reset failed." }
   }
   revalidate(clientId)
   return { ok: true }

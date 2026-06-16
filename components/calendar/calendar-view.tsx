@@ -169,7 +169,10 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                       onClick={() => setSelected(e)}
                       className={cn(
                         "block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium",
-                        META[e.type].pill
+                        META[e.type].pill,
+                        e.status === "completed" && "line-through opacity-60",
+                        e.status === "skipped" && "opacity-40",
+                        e.status === "missed" && "line-through decoration-red-500 decoration-2 opacity-70"
                       )}
                       title={e.title}
                     >

@@ -1,5 +1,8 @@
 import { requireCoach } from "@/lib/auth"
-import { getAthleteCalendarEvents } from "@/lib/data/athlete-calendar"
+import {
+  getAthleteCalendarEvents,
+  getAthleteCalendarOverrides,
+} from "@/lib/data/athlete-calendar"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { AthleteCalendar } from "@/components/calendar/athlete-calendar"
 
@@ -10,7 +13,10 @@ export default async function ClientCalendarPage({
 }) {
   await requireCoach()
   const { clientId } = await params
-  const events = await getAthleteCalendarEvents(clientId)
+  const [events, overrides] = await Promise.all([
+    getAthleteCalendarEvents(clientId),
+    getAthleteCalendarOverrides(clientId),
+  ])
 
   return (
     <div className="space-y-3">
@@ -20,7 +26,7 @@ export default async function ClientCalendarPage({
           database.
         </p>
       ) : null}
-      <AthleteCalendar clientId={clientId} events={events} />
+      <AthleteCalendar clientId={clientId} events={events} overrides={overrides} />
     </div>
   )
 }

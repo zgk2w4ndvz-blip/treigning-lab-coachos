@@ -1,7 +1,11 @@
 // Pure recurrence expansion — turns base events into per-day occurrences within
 // a range. Client-safe (no I/O). Supports none / daily / weekly.
 
-import type { AthleteCalendarEvent, CalendarOccurrence } from "@/types/models"
+import type {
+  AthleteCalendarEvent,
+  AthleteCalendarEventOverride,
+  CalendarOccurrence,
+} from "@/types/models"
 
 const DAY = 86_400_000
 const MAX_OCCURRENCES = 1000 // safety cap per event
@@ -14,31 +18,46 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/** Lookup key for a per-occurrence override: event id + local day. */
+export function overrideKey(eventId: string, date: string): string {
+  return `${eventId}@${date}`
+}
+
 function makeOccurrence(
   ev: AthleteCalendarEvent,
   start: Date,
   durationMs: number | null,
-  recurring: boolean
+  recurring: boolean,
+  overrides: Map<string, AthleteCalendarEventOverride>
 ): CalendarOccurrence {
   const date = isoDate(start)
+  const override = overrides.get(overrideKey(ev.id, date)) ?? null
   return {
     key: recurring ? `${ev.id}@${date}` : ev.id,
     event: ev,
     date,
     start: start.toISOString(),
     end: durationMs != null ? new Date(start.getTime() + durationMs).toISOString() : null,
+    status: override?.status ?? ev.status,
+    override,
   }
 }
 
-/** Expand events into occurrences overlapping [rangeStart, rangeEnd]. */
+/** Expand events into occurrences overlapping [rangeStart, rangeEnd].
+ *  Pass per-occurrence overrides to resolve each occurrence's effective status. */
 export function expandOccurrences(
   events: AthleteCalendarEvent[],
   rangeStart: Date,
-  rangeEnd: Date
+  rangeEnd: Date,
+  overrideRows: AthleteCalendarEventOverride[] = []
 ): CalendarOccurrence[] {
   const out: CalendarOccurrence[] = []
   const rs = rangeStart.getTime()
   const re = rangeEnd.getTime()
+  const overrides = new Map<string, AthleteCalendarEventOverride>()
+  for (const o of overrideRows) {
+    overrides.set(overrideKey(o.event_id, o.occurrence_date.slice(0, 10)), o)
+  }
 
   for (const ev of events) {
     const base = new Date(ev.starts_at)
@@ -47,7 +66,7 @@ export function expandOccurrences(
 
     if (ev.recurrence === "none") {
       const t = base.getTime()
-      if (t >= rs - DAY && t <= re) out.push(makeOccurrence(ev, base, durationMs, false))
+      if (t >= rs - DAY && t <= re) out.push(makeOccurrence(ev, base, durationMs, false, overrides))
       continue
     }
 
@@ -65,7 +84,7 @@ export function expandOccurrences(
     }
     let count = 0
     while (t <= hardEnd && count < MAX_OCCURRENCES) {
-      out.push(makeOccurrence(ev, new Date(t), durationMs, true))
+      out.push(makeOccurrence(ev, new Date(t), durationMs, true, overrides))
       t += step
       count++
     }

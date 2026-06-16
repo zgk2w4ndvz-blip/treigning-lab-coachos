@@ -65,11 +65,12 @@ export type CalendarCategory =
   | "hydration"
   | "recovery"
   | "testing"
+  | "labs"
   | "weigh_in"
   | "competition"
   | "check_in"
   | "note"
-export type CalendarStatus = "planned" | "completed" | "skipped"
+export type CalendarStatus = "planned" | "completed" | "skipped" | "missed"
 export type CalendarRecurrence = "none" | "daily" | "weekly"
 
 export type Json =
@@ -578,6 +579,16 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "all_day" | "status" | "recurrence" | "updated_at">
+      athlete_calendar_event_overrides: Table<{
+        id: string
+        event_id: string
+        occurrence_date: string
+        status: CalendarStatus
+        completed_at: Timestamp | null
+        notes: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "status" | "updated_at">
     }
     Views: Record<string, never>
     Functions: Record<string, never>

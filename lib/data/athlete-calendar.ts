@@ -2,7 +2,12 @@ import "server-only"
 
 import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
-import type { AthleteCalendarEvent, CalendarCategory, CalendarRecurrence } from "@/types/models"
+import type {
+  AthleteCalendarEvent,
+  AthleteCalendarEventOverride,
+  CalendarCategory,
+  CalendarRecurrence,
+} from "@/types/models"
 
 const COACH = "00000000-0000-0000-0000-0000000000c0"
 
@@ -75,5 +80,26 @@ export async function getAthleteCalendarEvents(
     .select("*")
     .eq("client_id", clientId)
     .order("starts_at", { ascending: true })
+  return data ?? []
+}
+
+/** Per-occurrence overrides for one athlete's events (status/notes divergences). */
+export async function getAthleteCalendarOverrides(
+  clientId: string
+): Promise<AthleteCalendarEventOverride[]> {
+  if (DEV_AUTH_BYPASS) return []
+
+  const supabase = await createServerSupabase()
+  const { data: events } = await supabase
+    .from("athlete_calendar_events")
+    .select("id")
+    .eq("client_id", clientId)
+  const ids = (events ?? []).map((e) => e.id)
+  if (ids.length === 0) return []
+
+  const { data } = await supabase
+    .from("athlete_calendar_event_overrides")
+    .select("*")
+    .in("event_id", ids)
   return data ?? []
 }

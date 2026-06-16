@@ -6,6 +6,7 @@ import { expandOccurrences } from "@/lib/calendar/recurrence"
 import { CATEGORY_META } from "@/lib/calendar/categories"
 import type {
   AthleteCalendarEvent,
+  AthleteCalendarEventOverride,
   CalendarCategory,
   CalendarEvent,
   CalendarEventType,
@@ -16,6 +17,7 @@ const CAT_TO_TYPE: Record<CalendarCategory, CalendarEventType> = {
   weigh_in: "weigh_in",
   check_in: "check_in",
   testing: "check_in",
+  labs: "check_in",
   note: "follow_up",
   nutrition: "consultation",
   hydration: "consultation",
@@ -28,14 +30,17 @@ const CAT_TO_TYPE: Record<CalendarCategory, CalendarEventType> = {
   altolab: "training",
 }
 
-/** Expand + map athlete calendar events into coach CalendarEvent[] for a window. */
+/** Expand + map athlete calendar events into coach CalendarEvent[] for a window.
+ *  Pass per-occurrence overrides so the roll-up reflects each occurrence's
+ *  effective (completed / skipped / missed) status. */
 export function athleteEventsToCalendar(
   events: AthleteCalendarEvent[],
   nameById: Map<string, string>,
   from: Date,
-  to: Date
+  to: Date,
+  overrides: AthleteCalendarEventOverride[] = []
 ): CalendarEvent[] {
-  return expandOccurrences(events, from, to).map((o) => {
+  return expandOccurrences(events, from, to, overrides).map((o) => {
     const ev = o.event
     const name = nameById.get(ev.client_id) ?? "Athlete"
     return {
@@ -49,6 +54,7 @@ export function athleteEventsToCalendar(
       durationMin: o.end
         ? Math.round((new Date(o.end).getTime() - new Date(o.start).getTime()) / 60_000)
         : null,
+      status: o.status,
     }
   })
 }

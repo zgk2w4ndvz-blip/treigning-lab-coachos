@@ -28,7 +28,7 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
   const to = WINDOW_TO().toISOString()
   const toDate = to.slice(0, 10)
 
-  const [{ data: clients }, sessions, weighIns, comps, { data: athleteCal }] = await Promise.all([
+  const [{ data: clients }, sessions, weighIns, comps, { data: athleteCal }, { data: overrides }] = await Promise.all([
     supabase.from("clients").select("id, first_name, last_name"),
     supabase
       .from("training_sessions")
@@ -47,13 +47,15 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
       .lte("competition_date", toDate),
     // All planning events (recurring ones may originate before the window).
     supabase.from("athlete_calendar_events").select("*"),
+    // Per-occurrence overrides (RLS scopes to this coach's events).
+    supabase.from("athlete_calendar_event_overrides").select("*"),
   ])
 
   const nameById = new Map(
     (clients ?? []).map((c) => [c.id, fullName(c.first_name, c.last_name)])
   )
   const events: CalendarEvent[] = []
-  events.push(...athleteEventsToCalendar(athleteCal ?? [], nameById, WINDOW_FROM(), WINDOW_TO()))
+  events.push(...athleteEventsToCalendar(athleteCal ?? [], nameById, WINDOW_FROM(), WINDOW_TO(), overrides ?? []))
 
   for (const s of sessions.data ?? []) {
     if (!s.scheduled_at) continue

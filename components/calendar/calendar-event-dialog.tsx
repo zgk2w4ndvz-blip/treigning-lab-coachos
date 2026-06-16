@@ -114,7 +114,9 @@ export function CalendarEventDialog({
               </select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="status">Status</Label>
+              <Label htmlFor="status">
+                Status{event && event.recurrence !== "none" ? " (series default)" : ""}
+              </Label>
               <select
                 id="status" name="status" defaultValue={event?.status ?? "planned"}
                 className="border-input bg-transparent dark:bg-input/30 h-9 rounded-md border px-3 text-sm"
@@ -122,7 +124,14 @@ export function CalendarEventDialog({
                 <option value="planned">Planned</option>
                 <option value="completed">Completed</option>
                 <option value="skipped">Skipped</option>
+                <option value="missed">Missed</option>
               </select>
+              {event && event.recurrence !== "none" ? (
+                <p className="text-muted-foreground text-[11px]">
+                  Sets the default for every occurrence. To mark one day, use the
+                  event&apos;s menu on the calendar.
+                </p>
+              ) : null}
             </div>
           </div>
 
