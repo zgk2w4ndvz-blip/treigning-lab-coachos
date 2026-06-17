@@ -16,7 +16,7 @@ import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
 import { analyzeMessage } from "@/lib/messages/analyze"
 import { extractCoachPrescriptions } from "@/lib/messages/coach-rx"
-import { matchAthlete, type MatchClient } from "@/lib/messages/match"
+import { matchAthlete, normalizeHandle, type MatchClient } from "@/lib/messages/match"
 import type { ParsedMessage } from "@/lib/messages/parse"
 import { fullName } from "@/lib/utils/format"
 import type { ReviewQueueItem } from "@/types/models"
@@ -30,6 +30,16 @@ export interface IngestPreviewItem {
   suggestions: { domain: string; intent: string | null }[]
 }
 
+/** Per-message outcome, keyed by externalId — lets the bridge print which
+ *  suggestion types each message produced. Returned for every run. */
+export interface IngestResultItem {
+  externalId: string | null
+  clientId: string | null
+  normalizedHandle: string | null
+  matched: boolean
+  actions: string[]
+}
+
 export interface IngestSummary {
   messageCount: number
   suggestionCount: number
@@ -38,6 +48,15 @@ export interface IngestSummary {
   /** Present only when opts.dryRun — nothing was written. */
   dryRun?: boolean
   preview?: IngestPreviewItem[]
+  /** Per-message outcomes (externalId → actions/match). */
+  results: IngestResultItem[]
+}
+
+/** A stable action label for a suggestion (details.action, else domain). */
+function actionsOf(suggestions: { domain: string; details?: Record<string, unknown> }[]): string[] {
+  return suggestions.map((s) =>
+    typeof s.details?.action === "string" ? (s.details.action as string) : s.domain
+  )
 }
 
 export interface IngestOptions {
@@ -63,6 +82,7 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
   const nameById = new Map(roster.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
   let matched = 0
   const preview: IngestPreviewItem[] = []
+  const results: IngestResultItem[] = []
   const created: ReviewQueueItem[] = []
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
@@ -70,6 +90,13 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const incoming = (m.direction ?? "incoming") === "incoming"
     const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
+    results.push({
+      externalId: m.externalId,
+      clientId: match.clientId,
+      normalizedHandle: normalizeHandle({ phone: m.senderPhone, email: m.senderEmail }),
+      matched: !!match.clientId,
+      actions: actionsOf(analyzed),
+    })
     if (dryRun) {
       preview.push({
         senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
@@ -94,10 +121,10 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
   }
   if (dryRun) {
     const suggestionCount = preview.reduce((n, p) => n + p.suggestions.length, 0)
-    return { messageCount: messages.length, suggestionCount, matched, errors: [], dryRun: true, preview }
+    return { messageCount: messages.length, suggestionCount, matched, errors: [], dryRun: true, preview, results }
   }
   addCreatedSuggestions(created)
-  return { messageCount: messages.length, suggestionCount: created.length, matched, errors: [] }
+  return { messageCount: messages.length, suggestionCount: created.length, matched, errors: [], results }
 }
 
 /** Match, classify, and persist a batch of normalized messages. Never throws. */
@@ -125,18 +152,27 @@ export async function runIngest(
   let matched = 0
   let suggestionCount = 0
   const preview: IngestPreviewItem[] = []
+  const results: IngestResultItem[] = []
 
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
     const sourceHandle = m.senderPhone ?? m.senderEmail ?? null
+    const normalizedHandle = normalizeHandle({ phone: m.senderPhone, email: m.senderEmail })
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const direction = m.direction ?? "incoming"
     const incoming = direction === "incoming"
+    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
+    results.push({
+      externalId: m.externalId,
+      clientId: match.clientId,
+      normalizedHandle,
+      matched: !!match.clientId,
+      actions: actionsOf(analyzed),
+    })
 
     // Dry-run: analyze + match only, persist nothing (not even pending rows).
     if (dryRun) {
-      const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
       suggestionCount += analyzed.length
       preview.push({
         senderLabel: sourceHandle ?? m.senderName ?? null,
@@ -152,11 +188,12 @@ export async function runIngest(
         coach_id: coachId, client_id: match.clientId, source: m.source,
         external_id: m.externalId, sender_name: m.senderName, sender_phone: m.senderPhone,
         sender_email: m.senderEmail, body: m.body, received_at: m.receivedAt,
-        direction, match_method: match.method, match_confidence: match.confidence,
+        direction, normalized_handle: normalizedHandle,
+        match_method: match.method, match_confidence: match.confidence,
       })
       .select("id").single()
     if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
-    const suggestions = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
+    const suggestions = analyzed
     if (suggestions.length) {
       const { error: sErr } = await supabase.from("suggested_actions").insert(
         suggestions.map((s) => ({
@@ -173,7 +210,7 @@ export async function runIngest(
   }
 
   if (dryRun) {
-    return { messageCount: messages.length, suggestionCount, matched, errors, dryRun: true, preview }
+    return { messageCount: messages.length, suggestionCount, matched, errors, dryRun: true, preview, results }
   }
-  return { messageCount: messages.length, suggestionCount, matched, errors }
+  return { messageCount: messages.length, suggestionCount, matched, errors, results }
 }

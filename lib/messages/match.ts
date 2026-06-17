@@ -28,7 +28,29 @@ export interface MatchResult {
 const digits = (s: string | null | undefined) => (s ? s.replace(/\D/g, "") : "")
 const lower = (s: string | null | undefined) => (s ? s.trim().toLowerCase() : "")
 
-/** Match a sender to a client. Phone > email > exact name > last-name only. */
+/** Canonical phone form for storage/display: NANP +1XXXXXXXXXX (last 10). Null
+ *  if too short. Strips spaces/dashes/parens and a leading +1 country code, so
+ *  4055551234, +14055551234, (405) 555-1234 and 405-555-1234 are all equal. */
+export function normalizePhone(raw: string | null | undefined): string | null {
+  const d = digits(raw)
+  if (d.length < 10) return null
+  return `+1${d.slice(-10)}`
+}
+
+/** Canonical handle for a sender: normalized phone, else lowercased email. */
+export function normalizeHandle(sender: {
+  phone?: string | null
+  email?: string | null
+}): string | null {
+  const p = normalizePhone(sender.phone)
+  if (p) return p
+  const e = lower(sender.email)
+  return e || null
+}
+
+/** Match a sender to a client. Phone > email; name ONLY when no handle exists.
+ *  A phone/email handle never falls through to a name match, so a sender's
+ *  handle can never be overridden by a name appearing in the message. */
 export function matchAthlete(sender: SenderInfo, clients: MatchClient[]): MatchResult {
   // 1) Phone — compare the last 10 digits.
   const sp = digits(sender.phone)
@@ -48,9 +70,11 @@ export function matchAthlete(sender: SenderInfo, clients: MatchClient[]): MatchR
     if (hit) return { clientId: hit.id, method: "email", confidence: 0.97 }
   }
 
-  // 3) Name — exact "first last", else unique last-name match.
+  // 3) Name — ONLY as a last resort when the sender carries no phone/email
+  //    handle at all (e.g. a manually pasted name-only row). Never used to
+  //    override or second-guess a handle.
   const sn = lower(sender.name)
-  if (sn) {
+  if (sn && !sender.phone && !sender.email) {
     const exact = clients.find(
       (c) => lower(`${c.first_name} ${c.last_name}`) === sn
     )

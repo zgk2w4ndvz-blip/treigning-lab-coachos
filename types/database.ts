@@ -523,11 +523,12 @@ export interface Database {
         body: string
         received_at: Timestamp | null
         direction: MessageDirection
+        normalized_handle: string | null
         match_method: MessageMatch
         match_confidence: number
         raw: Json | null
         created_at: Timestamp
-      }, Defaults | "source" | "direction" | "match_method" | "match_confidence">
+      }, Defaults | "source" | "direction" | "normalized_handle" | "match_method" | "match_confidence">
 
       prescriptions: Table<{
         id: string

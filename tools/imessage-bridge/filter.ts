@@ -24,6 +24,64 @@ export function last10(handle: string): string | null {
   return d.length >= 7 ? d.slice(-10) : null
 }
 
+/** Canonical display form, mirroring the server: +1XXXXXXXXXX or lowercased email. */
+export function normalizeHandle(handle: string): string | null {
+  if (handle.includes("@")) return handle.trim().toLowerCase()
+  const d = handle.replace(/\D/g, "")
+  return d.length >= 10 ? `+1${d.slice(-10)}` : null
+}
+
+/** The comparison key for matching: last-10 digits, or lowercased email. */
+export function matchKey(handle: string): { kind: "phone" | "email"; key: string } | null {
+  if (handle.includes("@")) return { kind: "email", key: handle.trim().toLowerCase() }
+  const t = last10(handle)
+  return t ? { kind: "phone", key: t } : null
+}
+
+export interface AthleteRef {
+  clientId: string
+  name: string
+}
+
+/**
+ * Index of allow-listed athletes keyed by match key (phone last-10 / email).
+ * A key that maps to MORE THAN ONE athlete is ambiguous — used by the safety
+ * check so a shared handle never silently picks one athlete.
+ */
+export function buildAthleteIndex(handles: Handle[]): Map<string, AthleteRef[]> {
+  const index = new Map<string, AthleteRef[]>()
+  const add = (key: string | null, ref: AthleteRef) => {
+    if (!key) return
+    const list = index.get(key) ?? []
+    if (!list.some((r) => r.clientId === ref.clientId)) list.push(ref)
+    index.set(key, list)
+  }
+  for (const h of handles) {
+    const ref = { clientId: h.clientId, name: h.name }
+    if (h.phoneLast10) add(h.phoneLast10, ref)
+    if (h.email) add(h.email.toLowerCase(), ref)
+  }
+  return index
+}
+
+export type ResolveResult =
+  | { status: "matched"; clientId: string; name: string; normalized: string; key: string }
+  | { status: "ambiguous"; key: string; normalized: string }
+  | { status: "none" }
+
+/** Resolve a message handle to exactly one allow-listed athlete, or flag it
+ *  as non-athlete (none) or shared (ambiguous). Allow-list keys ONLY — never
+ *  name, conversation title, or any prior selection. */
+export function resolveAthlete(handle: string, index: Map<string, AthleteRef[]>): ResolveResult {
+  const mk = matchKey(handle)
+  if (!mk) return { status: "none" }
+  const refs = index.get(mk.key)
+  if (!refs || refs.length === 0) return { status: "none" }
+  const normalized = normalizeHandle(handle) ?? mk.key
+  if (refs.length > 1) return { status: "ambiguous", key: mk.key, normalized }
+  return { status: "matched", clientId: refs[0].clientId, name: refs[0].name, normalized, key: mk.key }
+}
+
 export type HandleMatch = { kind: "phone" | "email"; value: string }
 
 /** Normalize a --handle query to its comparable form (last-10 / lowercased email). */

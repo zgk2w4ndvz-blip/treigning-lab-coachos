@@ -20,12 +20,21 @@ export interface IngestMessage {
   direction: "incoming" | "outgoing"
 }
 
+export interface IngestResultItem {
+  externalId: string | null
+  clientId: string | null
+  normalizedHandle: string | null
+  matched: boolean
+  actions: string[]
+}
+
 export interface IngestResult {
   ok: boolean
   messageCount?: number
   suggestionCount?: number
   matched?: number
   dryRun?: boolean
+  results?: IngestResultItem[]
   error?: string
 }
 

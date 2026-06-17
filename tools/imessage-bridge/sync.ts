@@ -19,7 +19,8 @@ import { loadConfig } from "./config"
 import { readState, writeState } from "./state"
 import { appleDateToIso, decodeBody, queryNewMessages } from "./chatdb"
 import { fetchHandles, postIngest, type IngestMessage } from "./api"
-import { buildAllowList, classifyHandle, narrowHandles } from "./filter"
+import { buildAthleteIndex, resolveAthlete, narrowHandles } from "./filter"
+import type { IngestResultItem } from "./api"
 
 const APPLE_EPOCH = 978_307_200
 
@@ -56,11 +57,9 @@ async function main() {
     console.log(`Scoped to ${handles.length} athlete(s): ${handles.map((h) => h.name).join(", ")}`)
   }
 
-  const allow = buildAllowList(handles)
-  vlog(
-    `allow-list: ${allow.phones.size} phone(s) + ${allow.emails.size} email(s) across ${handles.length} athlete(s)`
-  )
-  if (allow.phones.size === 0 && allow.emails.size === 0) {
+  const index = buildAthleteIndex(handles)
+  vlog(`allow-list index: ${index.size} handle key(s) across ${handles.length} athlete(s)`)
+  if (index.size === 0) {
     console.error("Allow-list is empty — no athlete handles to match. Aborting (nothing uploaded).")
     process.exit(2)
   }
@@ -89,12 +88,24 @@ async function main() {
   })
   vlog(`read ${raw.length} text row(s) from chat.db (limit ${flags.limit})`)
 
-  // 4. Filter to athletes + decode text. The matched handle is the athlete in
-  //    BOTH directions (sender for inbound, recipient for outbound), so the
-  //    privacy filter is identical; non-athlete conversations are dropped.
+  // 4. Resolve each message to EXACTLY one allow-listed athlete by handle. The
+  //    handle is the athlete in both directions (sender inbound / recipient
+  //    outbound). Non-athletes are dropped; a handle shared by >1 athlete is
+  //    skipped as ambiguous — never matched by name/title/prior selection.
+  interface DebugRow {
+    rowid: number
+    direction: "incoming" | "outgoing"
+    rawHandle: string
+    normalized: string
+    name: string
+    clientId: string
+    guid: string
+  }
   const toUpload: IngestMessage[] = []
+  const debug: DebugRow[] = []
   let maxRowId = state.lastRowId
   let nonAthlete = 0
+  let ambiguous = 0
   let empty = 0
   let inbound = 0
   let outbound = 0
@@ -104,9 +115,17 @@ async function main() {
       nonAthlete++
       continue
     }
-    const match = classifyHandle(m.handle, allow)
-    if (!match) {
+    const r = resolveAthlete(m.handle, index)
+    if (r.status === "none") {
       nonAthlete++ // privacy: not an athlete — drop, never store
+      continue
+    }
+    if (r.status === "ambiguous") {
+      ambiguous++
+      console.warn(
+        `AMBIGUOUS HANDLE MATCH — ROWID ${m.rowid}, handle ${m.handle} (${r.normalized}) ` +
+          `maps to multiple athletes; skipping (no suggestions created).`
+      )
       continue
     }
     const body = decodeBody(m.text, m.bodyHex)
@@ -124,14 +143,18 @@ async function main() {
       received_at: appleDateToIso(m.date),
       direction,
     }
-    // The matched athlete handle keys the conversation for BOTH directions.
-    if (match.kind === "phone") msg.sender_phone = match.value
-    else msg.sender_email = match.value
+    // Send the NORMALIZED athlete handle the message resolved to.
+    if (r.normalized.includes("@")) msg.sender_email = r.normalized
+    else msg.sender_phone = r.normalized
     toUpload.push(msg)
+    debug.push({
+      rowid: m.rowid, direction, rawHandle: m.handle, normalized: r.normalized,
+      name: r.name, clientId: r.clientId, guid: m.guid,
+    })
   }
   vlog(
     `matched ${toUpload.length} athlete message(s) (${inbound} inbound, ${outbound} outbound); ` +
-      `skipped ${nonAthlete} non-athlete, ${empty} empty/undecodable`
+      `skipped ${nonAthlete} non-athlete, ${ambiguous} ambiguous, ${empty} empty/undecodable`
   )
 
   const advance = !flags.dryRun && !flags.since && maxRowId > state.lastRowId
@@ -145,25 +168,45 @@ async function main() {
     return
   }
 
-  // 5. Upload in chunks.
+  // 5. Upload in chunks; collect per-message outcomes (by externalId).
   const CHUNK = 200
   let totalSug = 0
   let totalMatched = 0
+  const resultByGuid = new Map<string, IngestResultItem>()
   for (let i = 0; i < toUpload.length; i += CHUNK) {
     const batch = toUpload.slice(i, i + CHUNK)
     const res = await postIngest(cfg.baseUrl, cfg.token, batch, flags.dryRun)
     totalSug += res.suggestionCount ?? 0
     totalMatched += res.matched ?? 0
+    for (const r of res.results ?? []) if (r.externalId) resultByGuid.set(r.externalId, r)
     vlog(
       `POST /api/ingest (${batch.length}) → ${res.suggestionCount ?? 0} suggestion(s), ` +
         `${res.matched ?? 0} matched${res.dryRun ? " [dry-run, not persisted]" : ""}`
     )
   }
 
+  // 6. Per-message debug table (verbose or dry-run).
+  if (flags.verbose || flags.dryRun) {
+    console.log("\nPer-message matching:")
+    for (const d of debug) {
+      const actions = resultByGuid.get(d.guid)?.actions ?? []
+      console.log(
+        `ROWID ${d.rowid}\n` +
+          `  DIR ${d.direction === "outgoing" ? "out" : "in"}\n` +
+          `  HANDLE ${d.rawHandle}\n` +
+          `  NORMALIZED ${d.normalized}\n` +
+          `  MATCH ${d.name}\n` +
+          `  CLIENT_ID ${d.clientId}\n` +
+          `  SUGGESTIONS ${actions.length ? actions.join(", ") : "(none)"}`
+      )
+    }
+    console.log("")
+  }
+
   console.log(
     `${flags.dryRun ? "[dry-run] would upload" : "Uploaded"} ${toUpload.length} message(s) ` +
-      `(${inbound} inbound, ${outbound} outbound context) → ${totalSug} pending suggestion(s); ` +
-      `${totalMatched} matched. Outbound never produces suggestions.`
+      `(${inbound} inbound, ${outbound} outbound) → ${totalSug} pending suggestion(s); ` +
+      `${totalMatched} matched${ambiguous ? `, ${ambiguous} ambiguous skipped` : ""}.`
   )
 
   // 6. Advance cursor (steady-state runs only).
