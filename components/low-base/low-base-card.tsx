@@ -96,13 +96,13 @@ export function LowBaseCard({
                 Metabolic Efficiency Point (MEP)
               </p>
               <p className="text-primary text-6xl font-bold tabular-nums">
-                {prescription.mep_bpm}
+                {prescription.mep_bpm.toFixed(2)}
                 <span className="text-muted-foreground ml-2 text-2xl font-medium">bpm</span>
               </p>
               <p className="mt-2 text-lg font-semibold">
                 Low Base Range:{" "}
                 <span className="tabular-nums">
-                  {low}–{high}
+                  {low.toFixed(2)}–{high.toFixed(2)}
                 </span>{" "}
                 bpm
               </p>
@@ -154,8 +154,8 @@ export function LowBaseCard({
   }
 
   // ---- Edit mode -----------------------------------------------------------
-  const previewLow = Number.isFinite(mep) ? mep - 10 : 0
-  const previewHigh = Number.isFinite(mep) ? mep + 10 : 0
+  const previewLow = (Number.isFinite(mep) ? mep - 10 : 0).toFixed(2)
+  const previewHigh = (Number.isFinite(mep) ? mep + 10 : 0).toFixed(2)
   const previewWeekly = (Number(freq) || 0) * (Number(mins) || 0)
 
   return (
@@ -165,7 +165,7 @@ export function LowBaseCard({
           <div className="grid gap-1.5">
             <Label htmlFor="mep_bpm">MEP — Metabolic Efficiency Point (bpm)</Label>
             <Input
-              id="mep_bpm" name="mep_bpm" type="number" inputMode="numeric"
+              id="mep_bpm" name="mep_bpm" type="number" inputMode="decimal" step="0.01"
               value={mep} onChange={(e) => setMep(Number(e.target.value))} required
             />
             <p className="text-muted-foreground text-xs">
