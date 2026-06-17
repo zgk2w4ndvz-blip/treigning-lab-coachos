@@ -12,6 +12,7 @@ import { addCreatedTask } from "@/lib/dev-tasks-store"
 import { addStoredPrescription } from "@/lib/dev-prescription-store"
 import { mockReviewQueue } from "@/lib/mock/inbox"
 import { runIngest } from "@/lib/messages/ingest"
+import { bodyCompToWeightLogFields } from "@/lib/messages/body-comp"
 import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
 import { fetchGmailMessages } from "@/lib/messages/sources/gmail"
 import type { ActionState } from "@/lib/actions/types"
@@ -199,22 +200,7 @@ export async function reviewSuggestionAction(
           const at = msg?.received_at ? new Date(msg.received_at) : new Date()
           const dateStr = at.toISOString().slice(0, 10)
 
-          const comp: {
-            body_fat_pct?: number
-            skeletal_muscle_mass_lbs?: number
-            muscle_mass_lbs?: number
-            body_fat_mass_lbs?: number
-            total_body_water_lbs?: number
-            bmr?: number
-          } = {}
-          if (details.body_fat_percentage != null) comp.body_fat_pct = details.body_fat_percentage
-          if (details.skeletal_muscle_mass_lbs != null) {
-            comp.skeletal_muscle_mass_lbs = details.skeletal_muscle_mass_lbs
-            comp.muscle_mass_lbs = details.skeletal_muscle_mass_lbs
-          }
-          if (details.body_fat_mass_lbs != null) comp.body_fat_mass_lbs = details.body_fat_mass_lbs
-          if (details.total_body_water_lbs != null) comp.total_body_water_lbs = details.total_body_water_lbs
-          if (details.bmr != null) comp.bmr = details.bmr
+          const fields = bodyCompToWeightLogFields(details)
 
           // Same-day weight_log → update it; else create a new measurement.
           const { data: existRows } = await supabase
@@ -228,11 +214,10 @@ export async function reviewSuggestionAction(
           const existing = existRows?.[0]
 
           if (existing) {
-            const upd = { ...comp, ...(details.weight_lbs != null ? { weight_lbs: details.weight_lbs } : {}) }
-            const { error } = await supabase.from("weight_logs").update(upd).eq("id", existing.id)
+            const { error } = await supabase.from("weight_logs").update(fields).eq("id", existing.id)
             if (error) return { ok: false, error: error.message }
           } else {
-            let weight: number | null = details.weight_lbs ?? null
+            let weight: number | null = fields.weight_lbs ?? null
             if (weight == null) {
               const { data: last } = await supabase
                 .from("weight_logs").select("weight_lbs")
@@ -248,10 +233,10 @@ export async function reviewSuggestionAction(
               return { ok: false, error: "No weight on record — log a weight for this athlete first." }
             }
             const { error } = await supabase.from("weight_logs").insert({
+              ...fields,
               client_id: s.client_id, logged_by: coach.id, weight_lbs: weight,
               logged_at: at.toISOString(),
               notes: `From ${msg?.source ?? "message"} (body composition)`,
-              ...comp,
             })
             if (error) return { ok: false, error: error.message }
           }
