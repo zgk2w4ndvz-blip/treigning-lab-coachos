@@ -21,6 +21,7 @@ import {
   Medal,
   CalendarClock,
   Activity,
+  Ruler,
   type LucideIcon,
 } from "lucide-react"
 
@@ -52,6 +53,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
     { label: "Overview", segment: "", icon: LayoutDashboard },
     { label: "Calendar", segment: "calendar", icon: CalendarDays },
     { label: "Body Comp", segment: "weight", icon: Scale },
+    { label: "Measurements", segment: "measurements", icon: Ruler },
     { label: "Labs", segment: "labs", icon: FlaskConical },
     { label: "Rx", segment: "prescriptions", icon: ClipboardList },
     { label: "Nutrition", segment: "nutrition", icon: Utensils },

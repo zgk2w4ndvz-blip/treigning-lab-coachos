@@ -607,6 +607,26 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "updated_at">
+      body_measurements: Table<{
+        id: string
+        client_id: string
+        logged_by: string | null
+        measured_at: Timestamp
+        waist_in: number | null
+        hips_in: number | null
+        chest_in: number | null
+        shoulder_in: number | null
+        thigh_in: number | null
+        calves_in: number | null
+        wrist_in: number | null
+        ankle_in: number | null
+        neck_in: number | null
+        bicep_in: number | null
+        height_in: number | null
+        notes: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "measured_at" | "updated_at">
     }
     Views: Record<string, never>
     Functions: Record<string, never>
