@@ -23,6 +23,24 @@ const DOMAIN_LABELS: Record<SuggestionDomain, string> = {
   labs: "Labs", training: "Training", body_composition: "Body Composition",
 }
 
+const BODY_COMP_FIELDS: { key: string; label: string; unit: string }[] = [
+  { key: "body_fat_percentage", label: "PBF", unit: "%" },
+  { key: "skeletal_muscle_mass_lbs", label: "SMM", unit: " lb" },
+  { key: "body_fat_mass_lbs", label: "Body Fat Mass", unit: " lb" },
+  { key: "total_body_water_lbs", label: "Total Body Water", unit: " lb" },
+  { key: "bmr", label: "BMR", unit: " kcal" },
+]
+
+/** Structured rows for a body_composition_update suggestion, or null. */
+function bodyCompRows(details: Record<string, unknown> | null | undefined) {
+  if (!details || details.action !== "body_composition_update") return null
+  const rows = BODY_COMP_FIELDS.filter((f) => typeof details[f.key] === "number").map((f) => ({
+    label: f.label,
+    value: `${details[f.key] as number}${f.unit}`,
+  }))
+  return rows.length ? rows : null
+}
+
 export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
   const [rows, setRows] = useState(items)
   const [edits, setEdits] = useState<Record<string, string>>({})
@@ -51,7 +69,7 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
     setRows((prev) => prev.map((r) => (r.id === item.id ? { ...r, status: nextStatus } : r)))
     start(async () => {
       const res = await reviewSuggestionAction(item.id, decision, editedProtocol)
-      if (res.ok) toast.success(decision === "reject" ? "Rejected" : "Approved → prescription created")
+      if (res.ok) toast.success(decision === "reject" ? "Rejected" : "Approved")
       else {
         toast.error(res.error ?? "Failed")
         setRows((prev) => prev.map((r) => (r.id === item.id ? { ...r, status: "pending" } : r)))
@@ -121,16 +139,33 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
                   “{item.messageSnippet}”
                 </p>
 
-                <div className="space-y-1">
-                  <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
-                  <Textarea
-                    defaultValue={item.suggestedProtocol}
-                    onChange={(e) => setEdits((p) => ({ ...p, [item.id]: e.target.value }))}
-                    rows={2}
-                    className="text-sm"
-                    disabled={done}
-                  />
-                </div>
+                {(() => {
+                  const bc = bodyCompRows(item.details)
+                  return bc ? (
+                    <div className="rounded-md border p-3">
+                      <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
+                      <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                        {bc.map((r) => (
+                          <li key={r.label} className="flex justify-between gap-2">
+                            <span className="text-muted-foreground">{r.label}</span>
+                            <span className="font-medium tabular-nums">{r.value}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
+                      <Textarea
+                        defaultValue={item.suggestedProtocol}
+                        onChange={(e) => setEdits((p) => ({ ...p, [item.id]: e.target.value }))}
+                        rows={2}
+                        className="text-sm"
+                        disabled={done}
+                      />
+                    </div>
+                  )
+                })()}
 
                 {!done ? (
                   <div className="flex items-center justify-end gap-2">

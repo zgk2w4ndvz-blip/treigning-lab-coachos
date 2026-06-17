@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict"
 
-import { extractSignals } from "@/lib/messages/extract"
+import { extractSignals, extractBodyComp } from "@/lib/messages/extract"
 
 type WeightDetails = {
   action: string
@@ -53,3 +53,51 @@ const generic = weightSuggestion("173.4", true)
 assert.equal((generic!.details as unknown as WeightDetails).entries[0].label, "general")
 
 console.log(`✓ extract bare-weight: ${passed} cases + 3 time-of-day assertions passed`)
+
+// ---- Body composition extraction -----------------------------------------
+assert.deepEqual(
+  extractBodyComp("PBF 11.4%\nSMM 88.4\nBody fat mass 19.7\nTotal body water 111.8lbs\nBasal met rate 1864kcal"),
+  {
+    body_fat_mass_lbs: 19.7,
+    skeletal_muscle_mass_lbs: 88.4,
+    total_body_water_lbs: 111.8,
+    bmr: 1864,
+    body_fat_percentage: 11.4,
+  }
+)
+assert.deepEqual(
+  extractBodyComp("Body Fat %: 10.8\nSkeletal Muscle Mass: 89.2\nTBW: 112.4\nBMR: 1901"),
+  {
+    skeletal_muscle_mass_lbs: 89.2,
+    total_body_water_lbs: 112.4,
+    bmr: 1901,
+    body_fat_percentage: 10.8,
+  }
+)
+assert.deepEqual(extractBodyComp("PBF 12.1\nSMM 87.5\nFat Mass 20.4"), {
+  body_fat_mass_lbs: 20.4,
+  skeletal_muscle_mass_lbs: 87.5,
+  body_fat_percentage: 12.1,
+})
+
+// Should ignore (no labeled number)
+assert.equal(extractBodyComp("I feel 11.4 out of 10 today"), null)
+assert.equal(extractBodyComp("SMM wrestling tournament"), null)
+assert.equal(extractBodyComp("BMR is probably higher now"), null)
+
+// End-to-end: a body-comp message produces one body_composition_update suggestion.
+const bc = extractSignals("PBF 11.4%, SMM 88.4, BMR 1864").find(
+  (s) => (s.details as { action?: string } | undefined)?.action === "body_composition_update"
+)
+assert.ok(bc, "expected a body_composition_update suggestion")
+
+// Regression: body-comp numbers (incl. "111.8lbs") must NOT become a weight.
+const full = extractSignals(
+  "PBF 11.4%\nSMM 88.4\nBody fat mass 19.7\nTotal body water 111.8lbs\nBasal met rate 1864kcal",
+  { matched: true }
+)
+const actions = full.map((s) => (s.details as { action?: string } | undefined)?.action)
+assert.ok(!actions.includes("create_weight_log"), "body-comp must not produce a weight log")
+assert.deepEqual(actions, ["body_composition_update"])
+
+console.log("✓ extract body-composition: 3 extract + 3 ignore + 1 suggestion assertions passed")

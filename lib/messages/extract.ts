@@ -214,6 +214,79 @@ export function extractBareWeight(text: string): WeightEntry | null {
   return { label, weightLbs: round1(val), context: "body" }
 }
 
+// ---- Body composition update (InBody-style readings) -----------------------
+// Recognizes labeled body-composition fields an athlete texts (PBF, SMM, fat
+// mass, TBW, BMR). Each field needs a label followed by a number — so bare
+// numbers or label-only mentions ("BMR is probably higher now") are ignored.
+
+export interface BodyCompFields {
+  body_fat_percentage?: number
+  skeletal_muscle_mass_lbs?: number
+  body_fat_mass_lbs?: number
+  total_body_water_lbs?: number
+  bmr?: number
+}
+
+const NUM = "(\\d+(?:\\.\\d+)?)"
+const UNIT = "\\s*(?:%|lbs?|kcal)?" // trailing unit is consumed (then stripped)
+// Order matters: more specific labels first, and matched spans are consumed so
+// a shorter label (e.g. "Body Fat") can't re-read a longer one's number
+// (e.g. "Body Fat Mass 19.7").
+const BODY_COMP_MATCHERS: { key: keyof BodyCompFields; re: RegExp }[] = [
+  { key: "body_fat_mass_lbs", re: new RegExp(`\\b(?:body\\s*fat\\s*mass|fat\\s*mass)\\b\\s*[:=]?\\s*${NUM}${UNIT}`, "i") },
+  { key: "skeletal_muscle_mass_lbs", re: new RegExp(`\\b(?:smm|skeletal\\s*muscle\\s*mass)\\b\\s*[:=]?\\s*${NUM}${UNIT}`, "i") },
+  { key: "total_body_water_lbs", re: new RegExp(`\\b(?:tbw|total\\s*body\\s*water)\\b\\s*[:=]?\\s*${NUM}${UNIT}`, "i") },
+  { key: "bmr", re: new RegExp(`\\b(?:bmr|basal\\s*met(?:abolic)?\\s*rate|basal\\s*metabolism)\\b\\s*[:=]?\\s*${NUM}${UNIT}`, "i") },
+  { key: "body_fat_percentage", re: new RegExp(`\\b(?:pbf|percent\\s*body\\s*fat|body\\s*fat\\s*percentage|body\\s*fat)\\b\\s*%?\\s*[:=]?\\s*${NUM}${UNIT}`, "i") },
+]
+
+/** Scan body-composition fields and return the residual text (matches blanked). */
+function scanBodyComp(text: string): { fields: BodyCompFields; residual: string } {
+  let work = text
+  const fields: BodyCompFields = {}
+  for (const m of BODY_COMP_MATCHERS) {
+    const match = work.match(m.re)
+    if (match && match.index != null) {
+      fields[m.key] = parseFloat(match[1])
+      // Blank the matched span (label + number + unit) so it can't be re-read
+      // here or mistaken for a body weight downstream.
+      work =
+        work.slice(0, match.index) +
+        " ".repeat(match[0].length) +
+        work.slice(match.index + match[0].length)
+    }
+  }
+  return { fields, residual: work }
+}
+
+/** Pull labeled body-composition fields from a message, or null if none. */
+export function extractBodyComp(text: string): BodyCompFields | null {
+  const { fields } = scanBodyComp(text)
+  return Object.keys(fields).length > 0 ? fields : null
+}
+
+const BODY_COMP_LABEL: { key: keyof BodyCompFields; label: string; unit: string }[] = [
+  { key: "body_fat_percentage", label: "PBF", unit: "%" },
+  { key: "skeletal_muscle_mass_lbs", label: "SMM", unit: " lb" },
+  { key: "body_fat_mass_lbs", label: "Body Fat Mass", unit: " lb" },
+  { key: "total_body_water_lbs", label: "Total Body Water", unit: " lb" },
+  { key: "bmr", label: "BMR", unit: " kcal" },
+]
+
+function bodyCompSuggestion(fields: BodyCompFields): ClassifiedSuggestion {
+  const parts = BODY_COMP_LABEL.filter((f) => fields[f.key] != null).map(
+    (f) => `${f.label} ${fields[f.key]}${f.unit}`
+  )
+  return {
+    domain: "body_composition",
+    intent: "Body composition update",
+    suggestedProtocol: `Update body composition — ${parts.join(", ")}`,
+    confidence: 0.85,
+    sensitive: false,
+    details: { action: "body_composition_update", ...fields },
+  }
+}
+
 export interface ExtractOptions {
   /** True when the message already matched an athlete (enables bare-weight). */
   matched?: boolean
@@ -225,19 +298,29 @@ export function extractSignals(body: string, opts: ExtractOptions = {}): Classif
   if (!text) return []
   const out: ClassifiedSuggestion[] = []
 
+  // Labeled body-composition readings → a structured update suggestion. Strip
+  // those spans first so their numbers (e.g. "Total body water 111.8lbs") are
+  // never mistaken for a body weight by the weight extractor below.
+  const { fields: compFields, residual } = scanBodyComp(text)
+  const hasComp = Object.keys(compFields).length > 0
+  const weightText = hasComp ? residual : text
+
   // Body weight and competition weigh-ins become separate suggestions.
-  const weights = extractWeights(text)
+  const weights = extractWeights(weightText)
   let bodyWeights = weights.filter((e) => e.context === "body")
   const compWeights = weights.filter((e) => e.context === "competition")
 
-  // Matched-athlete fallback: a bare number with no weight keyword.
-  if (opts.matched && bodyWeights.length === 0 && compWeights.length === 0) {
+  // Matched-athlete fallback: a bare number with no weight keyword (only when
+  // there's no body-composition reading in the message).
+  if (opts.matched && !hasComp && bodyWeights.length === 0 && compWeights.length === 0) {
     const bare = extractBareWeight(text)
     if (bare) bodyWeights = [bare]
   }
 
   if (bodyWeights.length) out.push(weightSuggestion(bodyWeights, "body"))
   if (compWeights.length) out.push(weightSuggestion(compWeights, "competition"))
+
+  if (hasComp) out.push(bodyCompSuggestion(compFields))
 
   for (const rule of OBSERVATIONS) {
     if (rule.test.test(text)) {

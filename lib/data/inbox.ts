@@ -76,6 +76,7 @@ async function real(): Promise<InboxData> {
       messageSnippet: m?.body ?? "",
       receivedAt: m?.received_at ?? null,
       createdAt: r.created_at,
+      details: (r.details as Record<string, unknown> | null) ?? null,
     }
   })
   return { items, stats: computeStats(items) }

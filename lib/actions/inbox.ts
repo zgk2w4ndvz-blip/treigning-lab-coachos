@@ -150,7 +150,17 @@ export async function reviewSuggestionAction(
         if (!s.client_id) return { ok: false, error: "Match this message to an athlete before approving." }
 
         const details = s.details as unknown as
-          | { action?: string; context?: string; entries?: { label?: string; weightLbs?: number }[] }
+          | {
+              action?: string
+              context?: string
+              entries?: { label?: string; weightLbs?: number }[]
+              body_fat_percentage?: number
+              skeletal_muscle_mass_lbs?: number
+              body_fat_mass_lbs?: number
+              total_body_water_lbs?: number
+              bmr?: number
+              weight_lbs?: number
+            }
           | null
 
         if (details?.action === "create_weight_log" && Array.isArray(details.entries)) {
@@ -175,6 +185,77 @@ export async function reviewSuggestionAction(
           if (rows.length === 0) return { ok: false, error: "No valid weight values to log." }
           const { error: wErr } = await supabase.from("weight_logs").insert(rows)
           if (wErr) return { ok: false, error: wErr.message }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else if (details?.action === "body_composition_update") {
+          // Structured body-composition reading → create/update a weight_log's
+          // body-comp fields (NOT a prescription). Weight is only set if the
+          // payload carries one; otherwise the existing/last-known weight stays.
+          const { data: msg } = await supabase
+            .from("message_ingest").select("received_at, source").eq("id", s.message_id).single()
+          const at = msg?.received_at ? new Date(msg.received_at) : new Date()
+          const dateStr = at.toISOString().slice(0, 10)
+
+          const comp: {
+            body_fat_pct?: number
+            skeletal_muscle_mass_lbs?: number
+            muscle_mass_lbs?: number
+            body_fat_mass_lbs?: number
+            total_body_water_lbs?: number
+            bmr?: number
+          } = {}
+          if (details.body_fat_percentage != null) comp.body_fat_pct = details.body_fat_percentage
+          if (details.skeletal_muscle_mass_lbs != null) {
+            comp.skeletal_muscle_mass_lbs = details.skeletal_muscle_mass_lbs
+            comp.muscle_mass_lbs = details.skeletal_muscle_mass_lbs
+          }
+          if (details.body_fat_mass_lbs != null) comp.body_fat_mass_lbs = details.body_fat_mass_lbs
+          if (details.total_body_water_lbs != null) comp.total_body_water_lbs = details.total_body_water_lbs
+          if (details.bmr != null) comp.bmr = details.bmr
+
+          // Same-day weight_log → update it; else create a new measurement.
+          const { data: existRows } = await supabase
+            .from("weight_logs")
+            .select("id, weight_lbs")
+            .eq("client_id", s.client_id)
+            .gte("logged_at", `${dateStr}T00:00:00`)
+            .lte("logged_at", `${dateStr}T23:59:59.999`)
+            .order("logged_at", { ascending: false })
+            .limit(1)
+          const existing = existRows?.[0]
+
+          if (existing) {
+            const upd = { ...comp, ...(details.weight_lbs != null ? { weight_lbs: details.weight_lbs } : {}) }
+            const { error } = await supabase.from("weight_logs").update(upd).eq("id", existing.id)
+            if (error) return { ok: false, error: error.message }
+          } else {
+            let weight: number | null = details.weight_lbs ?? null
+            if (weight == null) {
+              const { data: last } = await supabase
+                .from("weight_logs").select("weight_lbs")
+                .eq("client_id", s.client_id).order("logged_at", { ascending: false }).limit(1)
+              weight = last?.[0]?.weight_lbs ?? null
+            }
+            if (weight == null) {
+              const { data: client } = await supabase
+                .from("clients").select("current_weight").eq("id", s.client_id).maybeSingle()
+              weight = client?.current_weight ?? null
+            }
+            if (weight == null) {
+              return { ok: false, error: "No weight on record — log a weight for this athlete first." }
+            }
+            const { error } = await supabase.from("weight_logs").insert({
+              client_id: s.client_id, logged_by: coach.id, weight_lbs: weight,
+              logged_at: at.toISOString(),
+              notes: `From ${msg?.source ?? "message"} (body composition)`,
+              ...comp,
+            })
+            if (error) return { ok: false, error: error.message }
+          }
+
           const { error: uErr } = await supabase
             .from("suggested_actions")
             .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
