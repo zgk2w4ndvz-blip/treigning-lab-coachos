@@ -70,6 +70,11 @@ Config the bridge reads (all local):
 npm run bridge:init-cursor     # sets the cursor to the current latest ROWID; uploads nothing
                                # (rerun is guarded: confirm [y/N] or pass --force)
 
+# inspect recent rows read-only (no upload, cursor untouched, NO bodies by default)
+npm run bridge:debug-recent                 # rowid/time/handle/match/athlete/decodable
+npm run bridge:debug-recent -- --preview    # add a 20-char body preview
+npm run bridge:debug-recent -- --athlete "Julian Ramirez" --limit 50
+
 npm run bridge:dry-run         # analyze + match, NOTHING persisted (server dry-run)
 npm run bridge:sync            # real sync → pending suggestions for coach review
 
@@ -143,6 +148,7 @@ server's unique index on the message GUID prevents duplicate ingestion.
 |---|---|
 | `sync.ts` | entry point / orchestrator |
 | `init-cursor.ts` | set the cursor to the current latest ROWID (no backfill) |
+| `debug-recent.ts` | read-only inspector of recent rows (no upload, no bodies) |
 | `config.ts` | env + flag loading |
 | `chatdb.ts` | read-only chat.db query + attributedBody decode |
 | `filter.ts` | allow-list build + handle matching |
