@@ -62,7 +62,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
     { label: "Training", segment: "training", icon: Dumbbell },
     { label: "Competitions", segment: "competitions", icon: Trophy },
     { label: "Combat", segment: "combat", icon: Swords },
-    { label: "Messages", segment: "messages", icon: MessageSquare },
+    { label: "Conversation", segment: "messages", icon: MessageSquare },
   ]
 
 /** Athlete (client portal) navigation. */
