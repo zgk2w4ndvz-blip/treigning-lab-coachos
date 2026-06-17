@@ -9,11 +9,11 @@
 // ============================================================================
 
 import { classifyMessage, type ClassifiedSuggestion } from "@/lib/messages/classify"
-import { extractSignals } from "@/lib/messages/extract"
+import { extractSignals, type ExtractOptions } from "@/lib/messages/extract"
 
 /** Structured signals first, then any non-overlapping domain suggestions. */
-export function analyzeMessage(body: string): ClassifiedSuggestion[] {
-  const structured = extractSignals(body)
+export function analyzeMessage(body: string, opts: ExtractOptions = {}): ClassifiedSuggestion[] {
+  const structured = extractSignals(body, opts)
   const covered = new Set(structured.map((s) => s.domain))
   const generic = classifyMessage(body).filter((s) => !covered.has(s.domain))
   return [...structured, ...generic].sort((a, b) => b.confidence - a.confidence)

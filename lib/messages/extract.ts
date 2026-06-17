@@ -164,16 +164,78 @@ const OBSERVATIONS: ObservationRule[] = [
   },
 ]
 
+// ---- Bare-number body weight (matched athletes only) -----------------------
+// When a message is already matched to an athlete, a message that is essentially
+// just a number in a plausible body-weight range is treated as a weight report
+// (e.g. an athlete who texts "173.4"). Gated on `matched` so we never guess a
+// stray number is a weight for an unknown sender.
+
+const BARE_MIN = 70
+const BARE_MAX = 400
+
+// Money / payment / non-weight contexts that disqualify the whole message.
+const MONEY =
+  /[$£€]|\b(paid|pay|owe|owes|cost|costs|venmo|zelle|cash|price|priced|bucks|dollars?|tip|refund|invoice|charge|charged|spent)\b/i
+
+// Non-numeric tokens allowed in a "bare weight" message (everything else means
+// it's a sentence, not a bare weight).
+const ALLOWED_BARE = new Set([
+  "lb", "lbs", "pound", "pounds", "kg", "kgs", "kilo", "kilos",
+  "weight", "wt", "bw", "weighed", "weigh", "in",
+  "this", "today", "now", "ish", "at", "around", "about",
+  "morning", "am", "a.m", "a.m.", "evening", "pm", "p.m", "p.m.", "night", "tonight",
+])
+
+/** A bare numeric body weight from an athlete message, or null. */
+export function extractBareWeight(text: string): WeightEntry | null {
+  const t = text.trim()
+  if (!t) return null
+  if (MONEY.test(t)) return null
+  if (/\d\s*:\s*\d/.test(t)) return null // times like 8:30
+  if (/\d\s*[/-]\s*\d/.test(t)) return null // dates / phone-ish / ranges
+
+  const nums = t.match(/\d+(?:\.\d+)?/g) ?? []
+  if (nums.length !== 1) return null // exactly one number
+  const val = parseFloat(nums[0])
+  if (!(val >= BARE_MIN && val <= BARE_MAX)) return null
+
+  // Everything that isn't the number or an allowed qualifier word → not bare.
+  const residue = t
+    .toLowerCase()
+    .replace(/\d+(?:\.\d+)?/g, " ")
+    .split(/[^a-z.]+/)
+    .filter(Boolean)
+    .filter((w) => !ALLOWED_BARE.has(w))
+  if (residue.length > 0) return null
+
+  let label: TimeOfDay = "general"
+  if (MORNING.test(t)) label = "morning"
+  else if (EVENING.test(t)) label = "evening"
+  return { label, weightLbs: round1(val), context: "body" }
+}
+
+export interface ExtractOptions {
+  /** True when the message already matched an athlete (enables bare-weight). */
+  matched?: boolean
+}
+
 /** Extract structured signals from a message body as pending suggestions. */
-export function extractSignals(body: string): ClassifiedSuggestion[] {
+export function extractSignals(body: string, opts: ExtractOptions = {}): ClassifiedSuggestion[] {
   const text = (body ?? "").trim()
   if (!text) return []
   const out: ClassifiedSuggestion[] = []
 
   // Body weight and competition weigh-ins become separate suggestions.
   const weights = extractWeights(text)
-  const bodyWeights = weights.filter((e) => e.context === "body")
+  let bodyWeights = weights.filter((e) => e.context === "body")
   const compWeights = weights.filter((e) => e.context === "competition")
+
+  // Matched-athlete fallback: a bare number with no weight keyword.
+  if (opts.matched && bodyWeights.length === 0 && compWeights.length === 0) {
+    const bare = extractBareWeight(text)
+    if (bare) bodyWeights = [bare]
+  }
+
   if (bodyWeights.length) out.push(weightSuggestion(bodyWeights, "body"))
   if (compWeights.length) out.push(weightSuggestion(compWeights, "competition"))
 
