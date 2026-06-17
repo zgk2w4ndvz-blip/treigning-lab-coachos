@@ -53,6 +53,7 @@ export type Client = Tables<"clients">
 export type ClientInvite = Tables<"client_invites">
 export type WeightGoal = Tables<"weight_goals">
 export type WeightLog = Tables<"weight_logs">
+export type BodyMeasurement = Tables<"body_measurements">
 export type NutritionPlan = Tables<"nutrition_plans">
 export type NutritionLog = Tables<"nutrition_logs">
 export type HydrationLog = Tables<"hydration_logs">
@@ -189,6 +190,46 @@ export interface BodyCompositionData {
   goal: WeightGoal | null
   latest: WeightLog | null
   metrics: BodyCompMetricSummary[]
+}
+
+// ---- Measurements ----------------------------------------------------------
+
+/** Circumference sites tracked per session (keys match body_measurements cols). */
+export type MeasurementSiteKey =
+  | "waist_in"
+  | "hips_in"
+  | "chest_in"
+  | "shoulder_in"
+  | "thigh_in"
+  | "calves_in"
+  | "wrist_in"
+  | "ankle_in"
+  | "neck_in"
+  | "bicep_in"
+
+/** Derived (computed, not stored) measurement metrics. */
+export type MeasurementRatioKey = "hip_waist_ratio" | "waist_height_ratio"
+
+export type MeasurementMetricKey = MeasurementSiteKey | MeasurementRatioKey
+
+/** Current/previous/change + time series for one measurement metric. */
+export interface MeasurementMetricSummary {
+  key: MeasurementMetricKey
+  label: string
+  unit: string
+  current: number | null
+  previous: number | null
+  change: number | null
+  series: { date: string; value: number }[]
+}
+
+export interface MeasurementsData {
+  logs: BodyMeasurement[]
+  latest: BodyMeasurement | null
+  /** Circumference site metrics (waist, hips, …). */
+  sites: MeasurementMetricSummary[]
+  /** Derived ratio metrics (Hip/Waist, Waist/Height). */
+  ratios: MeasurementMetricSummary[]
 }
 
 /** 360° snapshot powering the client overview page. */
