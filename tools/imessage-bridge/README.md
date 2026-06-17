@@ -66,6 +66,10 @@ Config the bridge reads (all local):
 ## Usage
 
 ```bash
+# OPTIONAL but recommended: start "from now forward" — no backfill of old texts.
+npm run bridge:init-cursor     # sets the cursor to the current latest ROWID; uploads nothing
+                               # (rerun is guarded: confirm [y/N] or pass --force)
+
 npm run bridge:dry-run         # analyze + match, NOTHING persisted (server dry-run)
 npm run bridge:sync            # real sync → pending suggestions for coach review
 
@@ -138,6 +142,7 @@ server's unique index on the message GUID prevents duplicate ingestion.
 | File | Role |
 |---|---|
 | `sync.ts` | entry point / orchestrator |
+| `init-cursor.ts` | set the cursor to the current latest ROWID (no backfill) |
 | `config.ts` | env + flag loading |
 | `chatdb.ts` | read-only chat.db query + attributedBody decode |
 | `filter.ts` | allow-list build + handle matching |

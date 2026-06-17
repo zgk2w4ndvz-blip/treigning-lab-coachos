@@ -17,6 +17,7 @@
     "import:transform": "tsx tools/treigning-import/transform.ts",
     "import:dry-run": "tsx tools/treigning-import/upsert.ts",
     "import:apply": "tsx tools/treigning-import/upsert.ts --apply",
+    "bridge:init-cursor": "tsx tools/imessage-bridge/init-cursor.ts",
     "bridge:sync": "tsx tools/imessage-bridge/sync.ts",
     "bridge:dry-run": "tsx tools/imessage-bridge/sync.ts --dry-run --verbose"
   },

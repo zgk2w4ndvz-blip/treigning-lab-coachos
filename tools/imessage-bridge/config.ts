@@ -28,6 +28,14 @@ export interface BridgeConfig {
 
 export const BRIDGE_DIR = path.join(os.homedir(), ".coachos-bridge")
 
+/** Local file paths only — no token/URL required (used by init-cursor). */
+export function resolvePaths(): { chatDbPath: string; statePath: string; bridgeDir: string } {
+  const chatDbPath =
+    process.env.COACHOS_CHATDB?.trim() ||
+    path.join(os.homedir(), "Library", "Messages", "chat.db")
+  return { chatDbPath, statePath: path.join(BRIDGE_DIR, "state.json"), bridgeDir: BRIDGE_DIR }
+}
+
 function readTrim(p: string): string | null {
   try {
     return fs.readFileSync(p, "utf8").trim()
