@@ -627,6 +627,30 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "measured_at" | "updated_at">
+      metabolic_assessments: Table<{
+        id: string
+        client_id: string
+        logged_by: string | null
+        assessed_at: Timestamp
+        vo2_max: number | null
+        mep_bpm: number | null
+        aerobic_threshold_bpm: number | null
+        max_hr_bpm: number | null
+        notes: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "assessed_at" | "updated_at">
+      metabolic_curve_points: Table<{
+        id: string
+        assessment_id: string
+        client_id: string
+        stage: number
+        intensity: number | null
+        heart_rate_bpm: number | null
+        ventilation_l_min: number | null
+        vo2: number | null
+        created_at: Timestamp
+      }, Defaults>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

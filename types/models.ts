@@ -54,6 +54,8 @@ export type ClientInvite = Tables<"client_invites">
 export type WeightGoal = Tables<"weight_goals">
 export type WeightLog = Tables<"weight_logs">
 export type BodyMeasurement = Tables<"body_measurements">
+export type MetabolicAssessment = Tables<"metabolic_assessments">
+export type MetabolicCurvePoint = Tables<"metabolic_curve_points">
 export type NutritionPlan = Tables<"nutrition_plans">
 export type NutritionLog = Tables<"nutrition_logs">
 export type HydrationLog = Tables<"hydration_logs">
@@ -230,6 +232,34 @@ export interface MeasurementsData {
   sites: MeasurementMetricSummary[]
   /** Derived ratio metrics (Hip/Waist, Waist/Height). */
   ratios: MeasurementMetricSummary[]
+}
+
+// ---- Metabolic assessments -------------------------------------------------
+
+/** One heart-rate training zone derived from max HR (% of max). */
+export interface HeartRateZone {
+  zone: number
+  label: string
+  pctLow: number
+  pctHigh: number
+  minBpm: number
+  maxBpm: number
+}
+
+/** An assessment plus its ordered curve points (oldest stage → newest). */
+export interface MetabolicAssessmentWithPoints extends MetabolicAssessment {
+  points: MetabolicCurvePoint[]
+}
+
+export interface MetabolicData {
+  /** All assessments for the client, newest first. */
+  assessments: MetabolicAssessment[]
+  /** Most recent assessment with its curve points, or null if none. */
+  latest: MetabolicAssessmentWithPoints | null
+  /** HR zones derived from the latest assessment's max HR (empty if unknown). */
+  zones: HeartRateZone[]
+  /** The client's current Low Base prescription (push-MEP target), or null. */
+  lowBase: LowBasePrescription | null
 }
 
 /** 360° snapshot powering the client overview page. */
