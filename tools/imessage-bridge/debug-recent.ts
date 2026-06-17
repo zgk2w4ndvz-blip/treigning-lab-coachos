@@ -9,7 +9,7 @@
 //        --handle "<phone|email>", --preview.
 
 import { loadConfig } from "./config"
-import { appleDateToIso, decodeBody, queryRecentInbound } from "./chatdb"
+import { appleDateToIso, decodeBody, queryRecentMessages } from "./chatdb"
 import { fetchHandles } from "./api"
 import { buildAllowList, narrowHandles, normalizeHandleQuery } from "./filter"
 
@@ -64,14 +64,14 @@ async function main() {
     sinceAppleNs = (t / 1000 - APPLE_EPOCH) * 1e9
   }
 
-  const rows = queryRecentInbound({ chatDbPath: cfg.chatDbPath, sinceAppleNs, limit })
+  const rows = queryRecentMessages({ chatDbPath: cfg.chatDbPath, sinceAppleNs, limit })
 
   console.log(
-    `Inspecting recent inbound rows (read-only — no upload, cursor untouched)` +
+    `Inspecting recent rows, both directions (read-only — no upload, cursor untouched)` +
       `${flags.since ? `, since ${flags.since}` : ""}.\n`
   )
   console.log(
-    `${pad("ROWID", 8)} ${pad("TIMESTAMP", 22)} ${pad("HANDLE", 24)} ${pad("MATCH", 6)} ${pad("ATHLETE", 18)} ${pad("DECODE", 7)}${preview ? " PREVIEW(20)" : ""}`
+    `${pad("ROWID", 8)} ${pad("DIR", 4)} ${pad("TIMESTAMP", 22)} ${pad("HANDLE", 24)} ${pad("MATCH", 6)} ${pad("ATHLETE", 18)} ${pad("DECODE", 7)}${preview ? " PREVIEW(20)" : ""}`
   )
 
   let shown = 0
@@ -90,9 +90,10 @@ async function main() {
     const body = decodeBody(m.text, m.bodyHex)
     const decodable = body != null && body.length > 0
     const prev = preview && decodable ? ` ${body!.slice(0, 20).replace(/\s+/g, " ")}` : ""
+    const dir = m.isFromMe ? "out" : "in"
 
     console.log(
-      `${pad(String(m.rowid), 8)} ${pad(appleDateToIso(m.date), 22)} ${pad(handle, 24)} ${pad(matched ? "yes" : "no", 6)} ${pad(name, 18)} ${pad(decodable ? "ok" : "no", 7)}${prev}`
+      `${pad(String(m.rowid), 8)} ${pad(dir, 4)} ${pad(appleDateToIso(m.date), 22)} ${pad(handle, 24)} ${pad(matched ? "yes" : "no", 6)} ${pad(name, 18)} ${pad(decodable ? "ok" : "no", 7)}${prev}`
     )
     shown++
   }

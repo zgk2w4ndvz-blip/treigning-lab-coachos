@@ -42,6 +42,7 @@ export type SessionModality = "in_person" | "virtual" | "phone"
 export type SessionStatus = "scheduled" | "completed" | "cancelled" | "no_show"
 
 export type MessageSource = "gmail" | "sms" | "imessage" | "whatsapp" | "manual" | "csv" | "json"
+export type MessageDirection = "incoming" | "outgoing"
 export type MessageMatch = "phone" | "email" | "name" | "unmatched"
 export type SuggestionDomain =
   | "diet"
@@ -521,11 +522,12 @@ export interface Database {
         sender_email: string | null
         body: string
         received_at: Timestamp | null
+        direction: MessageDirection
         match_method: MessageMatch
         match_confidence: number
         raw: Json | null
         created_at: Timestamp
-      }, Defaults | "source" | "match_method" | "match_confidence">
+      }, Defaults | "source" | "direction" | "match_method" | "match_confidence">
 
       prescriptions: Table<{
         id: string

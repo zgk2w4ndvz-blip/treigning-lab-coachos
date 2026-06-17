@@ -36,6 +36,7 @@ const messageSchema = z.object({
   sender_email: z.string().trim().min(1).optional(),
   body: z.string().min(1),
   received_at: z.string().optional(),
+  direction: z.enum(["incoming", "outgoing"]).optional(),
 })
 
 const bodySchema = z.object({
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
     senderEmail: m.sender_email ?? null,
     body: m.body,
     receivedAt: toIso(m.received_at),
+    direction: m.direction ?? "incoming",
   }))
 
   try {

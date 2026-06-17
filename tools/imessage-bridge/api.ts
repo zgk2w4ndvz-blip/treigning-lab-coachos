@@ -17,6 +17,7 @@ export interface IngestMessage {
   sender_email?: string
   body: string
   received_at: string
+  direction: "incoming" | "outgoing"
 }
 
 export interface IngestResult {

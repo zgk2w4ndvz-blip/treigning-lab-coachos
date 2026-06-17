@@ -6,7 +6,7 @@
 
 import { parseCsv } from "@/lib/import/csv"
 import { parseChatExport } from "@/lib/messages/sources/chat-export"
-import type { MessageSource } from "@/types/database"
+import type { MessageSource, MessageDirection } from "@/types/database"
 
 export interface ParsedMessage {
   source: MessageSource
@@ -16,6 +16,8 @@ export interface ParsedMessage {
   senderEmail: string | null
   body: string
   receivedAt: string | null // ISO
+  /** incoming (athlete→coach) by default; outgoing = coach→athlete (context only). */
+  direction?: MessageDirection
 }
 
 export interface ParseResult {

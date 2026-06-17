@@ -66,7 +66,9 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
-    const analyzed = analyzeMessage(m.body, { matched: !!match.clientId })
+    // Outbound (coach) messages are context only — never analyzed/suggested.
+    const incoming = (m.direction ?? "incoming") === "incoming"
+    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
     if (dryRun) {
       preview.push({
         senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
@@ -127,10 +129,13 @@ export async function runIngest(
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
     const sourceHandle = m.senderPhone ?? m.senderEmail ?? null
+    // Outbound (coach) messages are stored as context only — never analyzed.
+    const direction = m.direction ?? "incoming"
+    const incoming = direction === "incoming"
 
     // Dry-run: analyze + match only, persist nothing (not even pending rows).
     if (dryRun) {
-      const analyzed = analyzeMessage(m.body, { matched: !!match.clientId })
+      const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
       suggestionCount += analyzed.length
       preview.push({
         senderLabel: sourceHandle ?? m.senderName ?? null,
@@ -146,11 +151,11 @@ export async function runIngest(
         coach_id: coachId, client_id: match.clientId, source: m.source,
         external_id: m.externalId, sender_name: m.senderName, sender_phone: m.senderPhone,
         sender_email: m.senderEmail, body: m.body, received_at: m.receivedAt,
-        match_method: match.method, match_confidence: match.confidence,
+        direction, match_method: match.method, match_confidence: match.confidence,
       })
       .select("id").single()
     if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
-    const suggestions = analyzeMessage(m.body, { matched: !!match.clientId })
+    const suggestions = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
     if (suggestions.length) {
       const { error: sErr } = await supabase.from("suggested_actions").insert(
         suggestions.map((s) => ({

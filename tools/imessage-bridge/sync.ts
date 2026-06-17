@@ -17,7 +17,7 @@
 
 import { loadConfig } from "./config"
 import { readState, writeState } from "./state"
-import { appleDateToIso, decodeBody, queryInboundMessages } from "./chatdb"
+import { appleDateToIso, decodeBody, queryNewMessages } from "./chatdb"
 import { fetchHandles, postIngest, type IngestMessage } from "./api"
 import { buildAllowList, classifyHandle, narrowHandles } from "./filter"
 
@@ -80,20 +80,24 @@ async function main() {
     vlog(`cursor: ROWID > ${state.lastRowId} (last sync ${state.lastSyncedAt ?? "never"})`)
   }
 
-  // 3. Read local messages.
-  const raw = queryInboundMessages({
+  // 3. Read local messages (both directions).
+  const raw = queryNewMessages({
     chatDbPath: cfg.chatDbPath,
     sinceRowId: state.lastRowId,
     sinceAppleNs,
     limit: flags.limit,
   })
-  vlog(`read ${raw.length} inbound text row(s) from chat.db (limit ${flags.limit})`)
+  vlog(`read ${raw.length} text row(s) from chat.db (limit ${flags.limit})`)
 
-  // 4. Filter to athletes + decode text.
+  // 4. Filter to athletes + decode text. The matched handle is the athlete in
+  //    BOTH directions (sender for inbound, recipient for outbound), so the
+  //    privacy filter is identical; non-athlete conversations are dropped.
   const toUpload: IngestMessage[] = []
   let maxRowId = state.lastRowId
   let nonAthlete = 0
   let empty = 0
+  let inbound = 0
+  let outbound = 0
   for (const m of raw) {
     if (m.rowid > maxRowId) maxRowId = m.rowid
     if (!m.handle) {
@@ -110,18 +114,24 @@ async function main() {
       empty++
       continue
     }
+    const direction = m.isFromMe ? "outgoing" : "incoming"
+    if (direction === "incoming") inbound++
+    else outbound++
     const msg: IngestMessage = {
       source: "imessage",
       external_id: m.guid,
       body,
       received_at: appleDateToIso(m.date),
+      direction,
     }
+    // The matched athlete handle keys the conversation for BOTH directions.
     if (match.kind === "phone") msg.sender_phone = match.value
     else msg.sender_email = match.value
     toUpload.push(msg)
   }
   vlog(
-    `matched ${toUpload.length} athlete message(s); skipped ${nonAthlete} non-athlete, ${empty} empty/undecodable`
+    `matched ${toUpload.length} athlete message(s) (${inbound} inbound, ${outbound} outbound); ` +
+      `skipped ${nonAthlete} non-athlete, ${empty} empty/undecodable`
   )
 
   const advance = !flags.dryRun && !flags.since && maxRowId > state.lastRowId
@@ -151,8 +161,9 @@ async function main() {
   }
 
   console.log(
-    `${flags.dryRun ? "[dry-run] would upload" : "Uploaded"} ${toUpload.length} message(s) → ` +
-      `${totalSug} pending suggestion(s); ${totalMatched} matched athlete(s).`
+    `${flags.dryRun ? "[dry-run] would upload" : "Uploaded"} ${toUpload.length} message(s) ` +
+      `(${inbound} inbound, ${outbound} outbound context) → ${totalSug} pending suggestion(s); ` +
+      `${totalMatched} matched. Outbound never produces suggestions.`
   )
 
   // 6. Advance cursor (steady-state runs only).

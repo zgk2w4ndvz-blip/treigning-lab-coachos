@@ -17,8 +17,10 @@ API and no cloud connector — this runs on **your Mac, with your permission**.
 - Reads `~/Library/Messages/chat.db` **read-only** via the system `sqlite3`.
 - Fetches your athlete allow-list from `GET /api/ingest/handles` **before** doing
   anything else.
-- Processes **only** inbound messages whose sender's phone (last-10 match) or
-  email is on the allow-list.
+- Processes messages (**both directions**) whose athlete handle — sender for
+  inbound, recipient for outbound — is on the allow-list (phone last-10 / email).
+  Inbound athlete messages produce **pending suggestions**; outbound coach
+  messages are stored as **conversation context only** and never suggested.
 - Forwards text + handle + timestamp to `POST /api/ingest`.
 - Tracks a local cursor so each message is processed once; idempotent across
   restarts (the server also de-dups by message GUID).
@@ -26,7 +28,7 @@ API and no cloud connector — this runs on **your Mac, with your permission**.
 **Doesn't**
 - ❌ No Apple ID / iCloud credentials are read, stored, or sent.
 - ❌ Non-athlete conversations are never uploaded or stored anywhere.
-- ❌ Outbound (your own) messages are ignored in v1.
+- ❌ Outbound messages never create suggestions (stored as context only).
 - ❌ Attachments, photos, videos, reactions, and tapbacks are ignored — **text only**.
 - ❌ It never writes to `weight_logs`, `prescriptions`, or any athlete table.
 
@@ -138,8 +140,8 @@ server's unique index on the message GUID prevents duplicate ingestion.
 - **`attributedBody` decoding is best-effort.** On modern macOS the body lives in
   a typedstream blob when `text` is NULL; the bridge extracts plain text
   heuristically and skips anything it can't decode (visible with `--verbose`).
-- Inbound only; SMS and iMessage both work, group messages from an athlete match
-  on the sender.
+- Both directions captured (inbound = athlete, outbound = coach context); SMS and
+  iMessage both work; group messages from an athlete match on the sender.
 - One coach per token (multi-coach supported server-side via `BRIDGE_TOKENS`).
 
 ## Files
