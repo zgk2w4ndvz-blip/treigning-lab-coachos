@@ -31,8 +31,11 @@ const BODY_COMP_FIELDS: { key: string; label: string; unit: string }[] = [
   { key: "bmr", label: "BMR", unit: " kcal" },
 ]
 
+type Details = Record<string, unknown> | null | undefined
+const num = (d: Details, k: string): number | null => (d && typeof d[k] === "number" ? (d[k] as number) : null)
+
 /** Structured rows for a body_composition_update suggestion, or null. */
-function bodyCompRows(details: Record<string, unknown> | null | undefined) {
+function bodyCompRows(details: Details) {
   if (!details || details.action !== "body_composition_update") return null
   const rows = BODY_COMP_FIELDS.filter((f) => typeof details[f.key] === "number").map((f) => ({
     label: f.label,
@@ -40,6 +43,34 @@ function bodyCompRows(details: Record<string, unknown> | null | undefined) {
   }))
   return rows.length ? rows : null
 }
+
+const NUTRITION_FIELDS: { key: string; label: string; unit: string }[] = [
+  { key: "calories", label: "Calories", unit: "" },
+  { key: "protein_g", label: "Protein", unit: "g" },
+  { key: "carbs_g", label: "Carbs", unit: "g" },
+  { key: "fat_g", label: "Fat", unit: "g" },
+]
+
+/** Structured rows for a nutrition_prescription suggestion, or null. */
+function nutritionRows(details: Details) {
+  if (!details || details.action !== "nutrition_prescription") return null
+  const rows = NUTRITION_FIELDS.filter((f) => typeof details[f.key] === "number").map((f) => ({
+    label: f.label,
+    value: `${details[f.key] as number}${f.unit}`,
+  }))
+  return rows.length ? rows : null
+}
+
+/** Low Base dose summary for a low_base_prescription suggestion, or null. */
+function lowBaseInfo(details: Details) {
+  if (!details || details.action !== "low_base_prescription") return null
+  const mins = num(details, "minutes_per_session")
+  const freq = num(details, "frequency_per_week")
+  if (mins == null && freq == null) return null
+  return { mins, freq, weekly: mins != null && freq != null ? mins * freq : null }
+}
+
+const isCoachRx = (details: Details) => !!details && details.author_type === "coach"
 
 export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
   const [rows, setRows] = useState(items)
@@ -141,19 +172,75 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
 
                 {(() => {
                   const bc = bodyCompRows(item.details)
-                  return bc ? (
-                    <div className="rounded-md border p-3">
-                      <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
-                      <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                        {bc.map((r) => (
-                          <li key={r.label} className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">{r.label}</span>
-                            <span className="font-medium tabular-nums">{r.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
+                  const nutr = nutritionRows(item.details)
+                  const lb = lowBaseInfo(item.details)
+                  const coach = isCoachRx(item.details)
+                  const banner = coach
+                    ? "Coach Prescription Detected"
+                    : bc
+                      ? "Athlete Update Detected"
+                      : null
+
+                  if (bc || nutr || lb) {
+                    return (
+                      <div className="rounded-md border p-3">
+                        {banner ? (
+                          <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-wide uppercase">
+                            {banner}
+                          </p>
+                        ) : null}
+                        {bc ? (
+                          <>
+                            <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
+                            <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                              {bc.map((r) => (
+                                <li key={r.label} className="flex justify-between gap-2">
+                                  <span className="text-muted-foreground">{r.label}</span>
+                                  <span className="font-medium tabular-nums">{r.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {nutr ? (
+                          <>
+                            <p className="mb-1.5 text-sm font-semibold">Nutrition Prescription</p>
+                            <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                              {nutr.map((r) => (
+                                <li key={r.label} className="flex justify-between gap-2">
+                                  <span className="text-muted-foreground">{r.label}</span>
+                                  <span className="font-medium tabular-nums">{r.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {lb ? (
+                          <>
+                            <p className="mb-1.5 text-sm font-semibold">Low Base Prescription</p>
+                            <ul className="space-y-1 text-sm">
+                              {lb.mins != null ? (
+                                <li className="tabular-nums">{lb.mins} minutes/session</li>
+                              ) : null}
+                              {lb.freq != null ? (
+                                <li className="tabular-nums">{lb.freq}× per week</li>
+                              ) : null}
+                              {lb.weekly != null ? (
+                                <li className="text-muted-foreground pt-1">
+                                  Total Weekly Time:{" "}
+                                  <span className="text-foreground font-medium tabular-nums">
+                                    {lb.weekly} min/week
+                                  </span>
+                                </li>
+                              ) : null}
+                            </ul>
+                          </>
+                        ) : null}
+                      </div>
+                    )
+                  }
+
+                  return (
                     <div className="space-y-1">
                       <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
                       <Textarea

@@ -15,6 +15,7 @@ import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
 import { analyzeMessage } from "@/lib/messages/analyze"
+import { extractCoachPrescriptions } from "@/lib/messages/coach-rx"
 import { matchAthlete, type MatchClient } from "@/lib/messages/match"
 import type { ParsedMessage } from "@/lib/messages/parse"
 import { fullName } from "@/lib/utils/format"
@@ -66,9 +67,9 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
   for (const m of messages) {
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
-    // Outbound (coach) messages are context only — never analyzed/suggested.
+    // Inbound → athlete analysis; outbound → coach prescription extraction.
     const incoming = (m.direction ?? "incoming") === "incoming"
-    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
+    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
     if (dryRun) {
       preview.push({
         senderLabel: m.senderPhone ?? m.senderEmail ?? m.senderName ?? null,
@@ -129,13 +130,13 @@ export async function runIngest(
     const match = matchAthlete({ name: m.senderName, phone: m.senderPhone, email: m.senderEmail }, roster)
     if (match.clientId) matched++
     const sourceHandle = m.senderPhone ?? m.senderEmail ?? null
-    // Outbound (coach) messages are stored as context only — never analyzed.
+    // Inbound → athlete analysis; outbound → coach prescription extraction.
     const direction = m.direction ?? "incoming"
     const incoming = direction === "incoming"
 
     // Dry-run: analyze + match only, persist nothing (not even pending rows).
     if (dryRun) {
-      const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
+      const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
       suggestionCount += analyzed.length
       preview.push({
         senderLabel: sourceHandle ?? m.senderName ?? null,
@@ -155,7 +156,7 @@ export async function runIngest(
       })
       .select("id").single()
     if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
-    const suggestions = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : []
+    const suggestions = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
     if (suggestions.length) {
       const { error: sErr } = await supabase.from("suggested_actions").insert(
         suggestions.map((s) => ({

@@ -84,8 +84,7 @@ export function LowBaseCard({
 
   // ---- View mode -----------------------------------------------------------
   if (!editing && prescription) {
-    const low = prescription.mep_bpm - 10
-    const high = prescription.mep_bpm + 10
+    const hasMep = prescription.mep_bpm != null
     const weekly = prescription.frequency_per_week * prescription.minutes_per_session
     return (
       <Card>
@@ -96,15 +95,21 @@ export function LowBaseCard({
                 Metabolic Efficiency Point (MEP)
               </p>
               <p className="text-primary text-6xl font-bold tabular-nums">
-                {prescription.mep_bpm.toFixed(2)}
+                {hasMep ? prescription.mep_bpm!.toFixed(2) : "—"}
                 <span className="text-muted-foreground ml-2 text-2xl font-medium">bpm</span>
               </p>
               <p className="mt-2 text-lg font-semibold">
-                Low Base Range:{" "}
-                <span className="tabular-nums">
-                  {low.toFixed(2)}–{high.toFixed(2)}
-                </span>{" "}
-                bpm
+                {hasMep ? (
+                  <>
+                    Low Base Range:{" "}
+                    <span className="tabular-nums">
+                      {(prescription.mep_bpm! - 10).toFixed(2)}–{(prescription.mep_bpm! + 10).toFixed(2)}
+                    </span>{" "}
+                    bpm
+                  </>
+                ) : (
+                  <span className="text-muted-foreground font-normal">MEP not set — add it to define the range.</span>
+                )}
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={startEdit}>

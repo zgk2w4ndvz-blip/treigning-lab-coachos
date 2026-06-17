@@ -599,7 +599,7 @@ export interface Database {
         id: string
         coach_id: string
         client_id: string
-        mep_bpm: number
+        mep_bpm: number | null
         frequency_per_week: number
         minutes_per_session: number
         notes: string | null

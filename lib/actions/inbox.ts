@@ -161,6 +161,12 @@ export async function reviewSuggestionAction(
               total_body_water_lbs?: number
               bmr?: number
               weight_lbs?: number
+              calories?: number
+              protein_g?: number
+              carbs_g?: number
+              fat_g?: number
+              minutes_per_session?: number
+              frequency_per_week?: number
             }
           | null
 
@@ -241,6 +247,63 @@ export async function reviewSuggestionAction(
             if (error) return { ok: false, error: error.message }
           }
 
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else if (details?.action === "nutrition_prescription") {
+          // Coach nutrition prescription → upsert the athlete's active plan.
+          const macros: { calories?: number; protein_g?: number; carbs_g?: number; fat_g?: number } = {}
+          if (details.calories != null) macros.calories = details.calories
+          if (details.protein_g != null) macros.protein_g = details.protein_g
+          if (details.carbs_g != null) macros.carbs_g = details.carbs_g
+          if (details.fat_g != null) macros.fat_g = details.fat_g
+
+          const { data: planRows } = await supabase
+            .from("nutrition_plans").select("id")
+            .eq("client_id", s.client_id).eq("is_active", true)
+            .order("created_at", { ascending: false }).limit(1)
+          const plan = planRows?.[0]
+          if (plan) {
+            const { error } = await supabase.from("nutrition_plans").update(macros).eq("id", plan.id)
+            if (error) return { ok: false, error: error.message }
+          } else {
+            const { error } = await supabase.from("nutrition_plans").insert({
+              client_id: s.client_id, coach_id: coach.id,
+              name: "iMessage prescription", is_active: true, ...macros,
+            })
+            if (error) return { ok: false, error: error.message }
+          }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else if (details?.action === "low_base_prescription") {
+          // Coach Low Base prescription → upsert the athlete's low_base record
+          // (dose only; MEP stays as-is, or null on a fresh record).
+          const dose: { minutes_per_session?: number; frequency_per_week?: number } = {}
+          if (details.minutes_per_session != null) dose.minutes_per_session = details.minutes_per_session
+          if (details.frequency_per_week != null) dose.frequency_per_week = details.frequency_per_week
+
+          const { data: lbRows } = await supabase
+            .from("low_base_prescriptions").select("id").eq("client_id", s.client_id).limit(1)
+          const lb = lbRows?.[0]
+          if (lb) {
+            const { error } = await supabase
+              .from("low_base_prescriptions")
+              .update({ ...dose, updated_at: new Date().toISOString() })
+              .eq("id", lb.id)
+            if (error) return { ok: false, error: error.message }
+          } else {
+            const { error } = await supabase.from("low_base_prescriptions").insert({
+              client_id: s.client_id, coach_id: coach.id, mep_bpm: null,
+              minutes_per_session: dose.minutes_per_session ?? 30,
+              frequency_per_week: dose.frequency_per_week ?? 3,
+            })
+            if (error) return { ok: false, error: error.message }
+          }
           const { error: uErr } = await supabase
             .from("suggested_actions")
             .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
