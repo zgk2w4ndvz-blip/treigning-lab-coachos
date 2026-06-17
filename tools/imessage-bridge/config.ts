@@ -11,6 +11,10 @@ export interface BridgeFlags {
   verbose: boolean
   since: string | null // ISO date / YYYY-MM-DD — backfill mode, cursor untouched
   limit: number
+  /** Restrict this run to one athlete (by name) — for testing before full sync. */
+  athlete: string | null
+  /** Restrict this run to one handle (phone/email) — for testing. */
+  handle: string | null
 }
 
 export interface BridgeConfig {
@@ -33,13 +37,22 @@ function readTrim(p: string): string | null {
 }
 
 export function parseFlags(argv: string[]): BridgeFlags {
-  const flags: BridgeFlags = { dryRun: false, verbose: false, since: null, limit: 500 }
+  const flags: BridgeFlags = {
+    dryRun: false,
+    verbose: false,
+    since: null,
+    limit: 500,
+    athlete: null,
+    handle: null,
+  }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--dry-run") flags.dryRun = true
     else if (a === "--verbose" || a === "-v") flags.verbose = true
     else if (a === "--since") flags.since = argv[++i] ?? null
     else if (a === "--limit") flags.limit = Math.max(1, Number(argv[++i] ?? "500") || 500)
+    else if (a === "--athlete") flags.athlete = argv[++i] ?? null
+    else if (a === "--handle") flags.handle = argv[++i] ?? null
   }
   return flags
 }

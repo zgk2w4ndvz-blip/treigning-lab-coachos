@@ -19,7 +19,7 @@ import { loadConfig } from "./config"
 import { readState, writeState } from "./state"
 import { appleDateToIso, decodeBody, queryInboundMessages } from "./chatdb"
 import { fetchHandles, postIngest, type IngestMessage } from "./api"
-import { buildAllowList, classifyHandle } from "./filter"
+import { buildAllowList, classifyHandle, narrowHandles } from "./filter"
 
 const APPLE_EPOCH = 978_307_200
 
@@ -36,7 +36,26 @@ async function main() {
   )
 
   // 1. Allow-list FIRST. If we can't get it, we upload nothing.
-  const handles = await fetchHandles(cfg.baseUrl, cfg.token)
+  const allHandles = await fetchHandles(cfg.baseUrl, cfg.token)
+
+  // Optional single-athlete scoping for testing. Narrows WITHIN the allow-list,
+  // so non-athletes can never be included regardless of these flags.
+  let handles = allHandles
+  if (flags.athlete || flags.handle) {
+    handles = narrowHandles(allHandles, { athlete: flags.athlete, handle: flags.handle })
+    if (handles.length === 0) {
+      const what = [
+        flags.athlete ? `--athlete "${flags.athlete}"` : null,
+        flags.handle ? `--handle "${flags.handle}"` : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
+      console.error(`No allow-listed athlete matches ${what}. Aborting (nothing uploaded).`)
+      process.exit(2)
+    }
+    console.log(`Scoped to ${handles.length} athlete(s): ${handles.map((h) => h.name).join(", ")}`)
+  }
+
   const allow = buildAllowList(handles)
   vlog(
     `allow-list: ${allow.phones.size} phone(s) + ${allow.emails.size} email(s) across ${handles.length} athlete(s)`

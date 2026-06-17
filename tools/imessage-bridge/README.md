@@ -69,6 +69,10 @@ Config the bridge reads (all local):
 npm run bridge:dry-run         # analyze + match, NOTHING persisted (server dry-run)
 npm run bridge:sync            # real sync → pending suggestions for coach review
 
+# test ONE athlete before syncing everyone (narrows within the allow-list)
+npx tsx tools/imessage-bridge/sync.ts --athlete "Julian Ramirez" --dry-run --verbose
+npx tsx tools/imessage-bridge/sync.ts --handle "(786) 262-2180" --dry-run --verbose
+
 # advanced
 npx tsx tools/imessage-bridge/sync.ts --since 2026-06-01   # backfill (cursor untouched)
 npx tsx tools/imessage-bridge/sync.ts --verbose            # detailed logging
@@ -76,6 +80,11 @@ npx tsx tools/imessage-bridge/sync.ts --limit 1000         # messages per run (d
 ```
 
 ### Flags
+- `--athlete "<name>"` — restrict the run to one athlete by name (matched against
+  the allow-list; exact or substring). Great for a single-athlete test first.
+- `--handle "<phone|email>"` — restrict the run to one handle (phone normalized to
+  last-10, or email). Both `--athlete`/`--handle` narrow **within** the allow-list,
+  so non-athletes can never be included.
 - `--dry-run` — runs the full pipeline but the server persists nothing and the
   cursor is not advanced.
 - `--since <date>` — process messages on/after a date (e.g. `2026-06-01`) for a

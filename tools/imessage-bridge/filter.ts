@@ -26,6 +26,43 @@ export function last10(handle: string): string | null {
 
 export type HandleMatch = { kind: "phone" | "email"; value: string }
 
+/** Normalize a --handle query to its comparable form (last-10 / lowercased email). */
+export function normalizeHandleQuery(h: string): HandleMatch | null {
+  if (h.includes("@")) return { kind: "email", value: h.trim().toLowerCase() }
+  const t = last10(h)
+  return t ? { kind: "phone", value: t } : null
+}
+
+/**
+ * Narrow the fetched athlete handles to a single athlete for testing, by name
+ * (--athlete) and/or handle (--handle). Both narrow within the allow-list, so
+ * non-athletes can never slip through. Returns the filtered subset.
+ */
+export function narrowHandles(
+  handles: Handle[],
+  opts: { athlete?: string | null; handle?: string | null }
+): Handle[] {
+  let out = handles
+  if (opts.athlete) {
+    const q = opts.athlete.trim().toLowerCase()
+    out = out.filter((h) => {
+      const n = h.name.trim().toLowerCase()
+      return n === q || n.includes(q)
+    })
+  }
+  if (opts.handle) {
+    const nq = normalizeHandleQuery(opts.handle)
+    out = nq
+      ? out.filter((h) =>
+          nq.kind === "phone"
+            ? h.phoneLast10 === nq.value
+            : h.email?.toLowerCase() === nq.value
+        )
+      : []
+  }
+  return out
+}
+
 /** Classify a sender handle against the allow-list, or null if not an athlete. */
 export function classifyHandle(handle: string, allow: AllowList): HandleMatch | null {
   if (handle.includes("@")) {
