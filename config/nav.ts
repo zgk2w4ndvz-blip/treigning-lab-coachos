@@ -20,6 +20,7 @@ import {
   Swords,
   Medal,
   CalendarClock,
+  Activity,
   type LucideIcon,
 } from "lucide-react"
 
@@ -57,6 +58,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
     { label: "Hydration", segment: "hydration", icon: Droplets },
     { label: "Supplements", segment: "supplements", icon: Pill },
     { label: "Recovery", segment: "recovery", icon: HeartPulse },
+    { label: "Low Base", segment: "low-base", icon: Activity },
     { label: "Training", segment: "training", icon: Dumbbell },
     { label: "Competitions", segment: "competitions", icon: Trophy },
     { label: "Combat", segment: "combat", icon: Swords },

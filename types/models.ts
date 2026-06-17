@@ -76,6 +76,7 @@ export type BiomarkerReading = Tables<"biomarker_readings">
 export type MessageIngest = Tables<"message_ingest">
 export type SuggestedAction = Tables<"suggested_actions">
 export type Prescription = Tables<"prescriptions">
+export type LowBasePrescription = Tables<"low_base_prescriptions">
 export type AthleteCalendarEvent = Tables<"athlete_calendar_events">
 export type AthleteCalendarEventOverride =
   Tables<"athlete_calendar_event_overrides">

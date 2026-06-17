@@ -595,6 +595,17 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "status" | "updated_at">
+      low_base_prescriptions: Table<{
+        id: string
+        coach_id: string
+        client_id: string
+        mep_bpm: number
+        frequency_per_week: number
+        minutes_per_session: number
+        notes: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "updated_at">
     }
     Views: Record<string, never>
     Functions: Record<string, never>
