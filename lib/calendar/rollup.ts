@@ -38,9 +38,10 @@ export function athleteEventsToCalendar(
   nameById: Map<string, string>,
   from: Date,
   to: Date,
-  overrides: AthleteCalendarEventOverride[] = []
+  overrides: AthleteCalendarEventOverride[] = [],
+  timeZone?: string
 ): CalendarEvent[] {
-  return expandOccurrences(events, from, to, overrides).map((o) => {
+  return expandOccurrences(events, from, to, overrides, timeZone).map((o) => {
     const ev = o.event
     const name = nameById.get(ev.client_id) ?? "Athlete"
     return {

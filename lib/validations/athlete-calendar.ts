@@ -13,15 +13,16 @@ const optText = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
-const toIso = (v: string) => {
-  const d = new Date(v)
-  return Number.isNaN(d.getTime()) ? null : d.toISOString()
-}
+// Timezone-naive wall-clock from <input type="datetime-local">. We keep the
+// wall-clock string here and convert it to a UTC instant in the action using
+// the operating timezone — NEVER parse it with `new Date()` (which would bind it
+// to the ambient runtime zone, i.e. UTC on the server). See lib/calendar/timezone.
+const WALL_CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
 
-const optDateTime = z
+const optWallClock = z
   .string()
   .optional()
-  .transform((v) => (v ? toIso(v) : null))
+  .transform((v) => (v && WALL_CLOCK.test(v) ? v : null))
 
 const optDate = z
   .string()
@@ -35,15 +36,8 @@ export const calendarEventSchema = z.object({
   starts_at: z
     .string()
     .min(1, "Start date/time is required")
-    .transform((v, ctx) => {
-      const iso = toIso(v)
-      if (!iso) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid date/time" })
-        return z.NEVER
-      }
-      return iso
-    }),
-  ends_at: optDateTime,
+    .refine((v) => WALL_CLOCK.test(v), "Invalid date/time"),
+  ends_at: optWallClock,
   all_day: z
     .union([z.literal("on"), z.literal(""), z.undefined()])
     .transform((v) => v === "on"),

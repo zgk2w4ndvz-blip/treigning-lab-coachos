@@ -64,10 +64,12 @@ export function AthleteCalendar({
   clientId,
   events,
   overrides = [],
+  timeZone,
 }: {
   clientId: string
   events: AthleteCalendarEvent[]
   overrides?: AthleteCalendarEventOverride[]
+  timeZone: string
 }) {
   const router = useRouter()
   const [, startTx] = useTransition()
@@ -78,13 +80,13 @@ export function AthleteCalendar({
   const byDate = useMemo(() => {
     const [rs, re] = rangeFor(view, cursor)
     const map = new Map<string, CalendarOccurrence[]>()
-    for (const o of expandOccurrences(events, rs, re, overrides)) {
+    for (const o of expandOccurrences(events, rs, re, overrides, timeZone)) {
       const list = map.get(o.date)
       if (list) list.push(o)
       else map.set(o.date, [o])
     }
     return map
-  }, [events, overrides, view, cursor])
+  }, [events, overrides, view, cursor, timeZone])
 
   const openNew = (date: string | null) => setDialog({ open: true, event: null, date })
   const openEdit = (ev: AthleteCalendarEvent) => setDialog({ open: true, event: ev, date: null })
@@ -135,10 +137,10 @@ export function AthleteCalendar({
         ))}
       </div>
 
-      {view === "day" && <DayView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
-      {view === "week" && <WeekView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
-      {view === "month" && <MonthView cursor={cursor} byDate={byDate} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
-      {view === "year" && <YearView cursor={cursor} events={events} overrides={overrides} onPick={(d) => { setCursor(d); setView("month") }} />}
+      {view === "day" && <DayView cursor={cursor} byDate={byDate} timeZone={timeZone} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "week" && <WeekView cursor={cursor} byDate={byDate} timeZone={timeZone} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "month" && <MonthView cursor={cursor} byDate={byDate} timeZone={timeZone} onAdd={openNew} onEdit={openEdit} onStatus={setStatus} onReset={resetStatus} />}
+      {view === "year" && <YearView cursor={cursor} events={events} overrides={overrides} timeZone={timeZone} onPick={(d) => { setCursor(d); setView("month") }} />}
 
       <CalendarEventDialog
         clientId={clientId}
@@ -146,6 +148,7 @@ export function AthleteCalendar({
         onOpenChange={(v) => setDialog((s) => ({ ...s, open: v }))}
         event={dialog.event}
         defaultDate={dialog.date}
+        timeZone={timeZone}
       />
     </div>
   )
@@ -157,7 +160,7 @@ const STATUS_ICON: Partial<Record<CalendarStatus, typeof Check>> = {
   missed: X,
 }
 
-function Chip({ occ, onEdit, onStatus, onReset }: ChipProps) {
+function Chip({ occ, timeZone, onEdit, onStatus, onReset }: ChipProps) {
   const meta = CATEGORY_META[occ.event.category]
   const StatusIcon = STATUS_ICON[occ.status]
   return (
@@ -176,7 +179,7 @@ function Chip({ occ, onEdit, onStatus, onReset }: ChipProps) {
         >
           {StatusIcon ? <StatusIcon className="size-3 shrink-0" /> : null}
           <span className="truncate">
-            {!occ.event.all_day ? `${new Date(occ.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ` : ""}
+            {!occ.event.all_day ? `${new Date(occ.start).toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" })} ` : ""}
             {occ.event.title}
           </span>
         </button>
@@ -200,6 +203,7 @@ function Chip({ occ, onEdit, onStatus, onReset }: ChipProps) {
 
 type ChipProps = {
   occ: CalendarOccurrence
+  timeZone: string
   onEdit: (e: AthleteCalendarEvent) => void
   onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
   onReset: (occ: CalendarOccurrence) => void
@@ -208,13 +212,14 @@ type ChipProps = {
 type ViewProps = {
   cursor: Date
   byDate: Map<string, CalendarOccurrence[]>
+  timeZone: string
   onAdd: (date: string | null) => void
   onEdit: (e: AthleteCalendarEvent) => void
   onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
   onReset: (occ: CalendarOccurrence) => void
 }
 
-function DayView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
+function DayView({ cursor, byDate, timeZone, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const list = byDate.get(dateKey(cursor)) ?? []
   return (
     <div className="space-y-2 rounded-lg border p-4">
@@ -223,7 +228,7 @@ function DayView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps
       ) : (
         list.map((o) => (
           <div key={o.key} className="space-y-1">
-            <Chip occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />
+            <Chip occ={o} timeZone={timeZone} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />
             {o.event.description ? <p className="text-muted-foreground pl-1.5 text-xs">{o.event.description}</p> : null}
           </div>
         ))
@@ -232,7 +237,7 @@ function DayView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps
   )
 }
 
-function WeekView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
+function WeekView({ cursor, byDate, timeZone, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const start = startOfWeek(cursor)
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
   return (
@@ -243,7 +248,7 @@ function WeekView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProp
         return (
           <div key={key} className={cn("min-h-28 cursor-pointer rounded-lg border p-2", key === TODAY_KEY && "border-primary")} onClick={() => onAdd(key)}>
             <p className="text-muted-foreground mb-1 text-xs font-medium">{WEEKDAYS[d.getDay()]} {d.getDate()}</p>
-            <div className="space-y-1">{list.map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}</div>
+            <div className="space-y-1">{list.map((o) => <Chip key={o.key} occ={o} timeZone={timeZone} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}</div>
           </div>
         )
       })}
@@ -251,7 +256,7 @@ function WeekView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProp
   )
 }
 
-function MonthView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewProps) {
+function MonthView({ cursor, byDate, timeZone, onAdd, onEdit, onStatus, onReset }: ViewProps) {
   const gridStart = startOfWeek(startOfMonth(cursor))
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
   return (
@@ -269,7 +274,7 @@ function MonthView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewPro
               className={cn("min-h-24 cursor-pointer border-t border-l p-1 [&:nth-child(7n+1)]:border-l-0", muted && "bg-muted/30")}>
               <p className={cn("text-right text-[11px]", key === TODAY_KEY ? "text-primary font-bold" : muted ? "text-muted-foreground/50" : "text-muted-foreground")}>{d.getDate()}</p>
               <div className="mt-0.5 space-y-0.5">
-                {list.slice(0, 3).map((o) => <Chip key={o.key} occ={o} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}
+                {list.slice(0, 3).map((o) => <Chip key={o.key} occ={o} timeZone={timeZone} onEdit={onEdit} onStatus={onStatus} onReset={onReset} />)}
                 {list.length > 3 ? <p className="text-muted-foreground pl-1 text-[10px]">+{list.length - 3} more</p> : null}
               </div>
             </div>
@@ -280,15 +285,15 @@ function MonthView({ cursor, byDate, onAdd, onEdit, onStatus, onReset }: ViewPro
   )
 }
 
-function YearView({ cursor, events, overrides, onPick }: { cursor: Date; events: AthleteCalendarEvent[]; overrides: AthleteCalendarEventOverride[]; onPick: (d: Date) => void }) {
+function YearView({ cursor, events, overrides, timeZone, onPick }: { cursor: Date; events: AthleteCalendarEvent[]; overrides: AthleteCalendarEventOverride[]; timeZone: string; onPick: (d: Date) => void }) {
   const year = cursor.getFullYear()
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarOccurrence[]>()
-    for (const o of expandOccurrences(events, new Date(year, 0, 1), new Date(year + 1, 0, 1), overrides)) {
+    for (const o of expandOccurrences(events, new Date(year, 0, 1), new Date(year + 1, 0, 1), overrides, timeZone)) {
       const l = map.get(o.date); if (l) l.push(o); else map.set(o.date, [o])
     }
     return map
-  }, [events, overrides, year])
+  }, [events, overrides, year, timeZone])
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

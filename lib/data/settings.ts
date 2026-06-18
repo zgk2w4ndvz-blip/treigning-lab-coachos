@@ -5,7 +5,28 @@ import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getCurrentProfile } from "@/lib/auth"
 import { getMockSettings } from "@/lib/mock/settings"
 import { readStoredSettings, type StoredSettings } from "@/lib/dev-settings-store"
+import { DEFAULT_OPERATING_TZ, operatingTimeZone } from "@/lib/calendar/timezone"
 import type { CoachSettingsData } from "@/types/models"
+
+/**
+ * The single gym operating timezone — the authority for all calendar date math.
+ * Reads coach_settings.timezone directly and falls back to America/Chicago when
+ * empty/invalid (NOT the generic mock default), per the chosen Option A.
+ */
+export async function getOperatingTimeZone(): Promise<string> {
+  if (DEV_AUTH_BYPASS) {
+    return operatingTimeZone(readStoredSettings()?.coach?.timezone)
+  }
+  const profile = await getCurrentProfile()
+  if (!profile) return DEFAULT_OPERATING_TZ
+  const supabase = await createServerSupabase()
+  const { data } = await supabase
+    .from("coach_settings")
+    .select("timezone")
+    .eq("coach_id", profile.id)
+    .maybeSingle()
+  return operatingTimeZone(data?.timezone)
+}
 
 /** Re-attach the env-driven devMode flag onto a stored/default payload. */
 function withDevMode(s: StoredSettings): CoachSettingsData {
