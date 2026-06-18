@@ -95,7 +95,7 @@ export default async function StatTrackerPage({
 }) {
   await requireCoach()
   const { clientId } = await params
-  const { assessments, latest, latestCart, latestManual, zone, lowBase, tape, scale } =
+  const { assessments, latest, latestCurve, latestCart, latestManual, zone, lowBase, tape, scale } =
     await getMetabolic(clientId)
 
   // VO2 Max trend across assessments (oldest → newest).
@@ -145,21 +145,21 @@ export default async function StatTrackerPage({
           <CurveCard
             title="Ventilation & Rate of Increase"
             icon={Activity}
-            data={curve(latest, "increase", "ventilation_l_min")}
+            data={curve(latestCurve, "increase", "ventilation_l_min")}
             color="#06b6d4"
             unit="L/min"
           />
           <CurveCard
             title="Ventilation & Rate of Decrease"
             icon={Activity}
-            data={curve(latest, "decrease", "ventilation_l_min")}
+            data={curve(latestCurve, "decrease", "ventilation_l_min")}
             color="#0891b2"
             unit="L/min"
           />
           <CurveCard
             title="HR Rate of Increase"
             icon={Activity}
-            data={curve(latest, "increase", "heart_rate_bpm")}
+            data={curve(latestCurve, "increase", "heart_rate_bpm")}
             color="#ef4444"
             unit="bpm"
           />

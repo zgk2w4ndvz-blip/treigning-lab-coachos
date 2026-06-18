@@ -141,6 +141,7 @@ function buildScale(latest: WeightLog | null): StatTrackerScale {
 function assemble(
   assessments: MetabolicAssessment[],
   latest: MetabolicAssessmentWithPoints | null,
+  latestCurve: MetabolicAssessmentWithPoints | null,
   lowBase: LowBasePrescription | null,
   tape: StatTrackerTape,
   scale: StatTrackerScale
@@ -148,6 +149,7 @@ function assemble(
   return {
     assessments,
     latest,
+    latestCurve,
     latestCart: assessments.find((a) => a.source === "cart") ?? null,
     latestManual: assessments.find((a) => a.source === "manual_cart") ?? null,
     zone: setPointZone(latest?.mep_bpm ?? null),
@@ -162,6 +164,7 @@ async function bypass(clientId: string): Promise<MetabolicData> {
     .map((a) => storedToAssessment(clientId, a))
     .sort((a, b) => b.assessed_at.localeCompare(a.assessed_at)) // newest first
   const latest = stored[0] ?? null
+  const latestCurve = stored.find((a) => a.points.length > 0) ?? null
   const [lowBase, measurements, bodyComp] = await Promise.all([
     getLowBasePrescription(clientId),
     getMeasurements(clientId),
@@ -170,6 +173,7 @@ async function bypass(clientId: string): Promise<MetabolicData> {
   return assemble(
     stored.map(scalarOnly),
     latest,
+    latestCurve,
     lowBase,
     buildTape(measurements.latest),
     buildScale(bodyComp.latest)
@@ -192,18 +196,30 @@ async function real(clientId: string): Promise<MetabolicData> {
   const list = rows ?? []
   const tape = buildTape(measurements.latest)
   const scale = buildScale(bodyComp.latest)
-  if (list.length === 0) return assemble(list, null, lowBase, tape, scale)
+  if (list.length === 0) return assemble(list, null, null, lowBase, tape, scale)
 
-  const head = list[0]
-  const { data: points } = await supabase
+  // Pull all curve points for the client, group by assessment.
+  const { data: allPoints } = await supabase
     .from("metabolic_curve_points")
     .select("*")
-    .eq("assessment_id", head.id)
-  const latest: MetabolicAssessmentWithPoints = {
-    ...head,
-    points: sortPoints(points ?? []),
+    .eq("client_id", clientId)
+  const byAssessment = new Map<string, MetabolicCurvePoint[]>()
+  for (const p of allPoints ?? []) {
+    const arr = byAssessment.get(p.assessment_id) ?? []
+    arr.push(p)
+    byAssessment.set(p.assessment_id, arr)
   }
-  return assemble(list, latest, lowBase, tape, scale)
+  const withPoints = (a: MetabolicAssessment): MetabolicAssessmentWithPoints => ({
+    ...a,
+    points: sortPoints(byAssessment.get(a.id) ?? []),
+  })
+
+  const head = list[0]
+  const latest = withPoints(head)
+  // Newest assessment (list is already desc by assessed_at) that has any points.
+  const curveHead = list.find((a) => (byAssessment.get(a.id)?.length ?? 0) > 0)
+  const latestCurve = curveHead ? withPoints(curveHead) : null
+  return assemble(list, latest, latestCurve, lowBase, tape, scale)
 }
 
 /** Full Stat Tracker (metabolic) module data for one client. */

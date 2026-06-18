@@ -1,8 +1,11 @@
 import { z } from "zod"
 
+// NOTE: the empty/null/undefined branches MUST precede z.coerce.number(), or
+// coercion eats "" and null into 0 (Number("") === 0) before they can map to
+// null. Order matters — a union returns the first matching member.
 const optNum = z
-  .union([z.coerce.number(), z.literal(""), z.undefined(), z.null()])
-  .transform((v) => (v === "" || v === undefined || v === null ? null : Number(v)))
+  .union([z.literal(""), z.null(), z.undefined(), z.coerce.number()])
+  .transform((v) => (typeof v === "number" ? v : null))
 
 const optDateTime = z
   .string()

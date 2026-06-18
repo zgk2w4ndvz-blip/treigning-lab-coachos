@@ -270,6 +270,12 @@ export interface MetabolicData {
   assessments: MetabolicAssessment[]
   /** Most recent assessment (any source) with its curve points, or null. */
   latest: MetabolicAssessmentWithPoints | null
+  /**
+   * Most recent assessment that actually has curve points (the cart test that
+   * produced the ventilation/HR curves), or null. Distinct from `latest` so a
+   * newer scalar-only Manual Cart entry doesn't blank the curves.
+   */
+  latestCurve: MetabolicAssessmentWithPoints | null
   /** Most recent device ("Cart") assessment, or null. */
   latestCart: MetabolicAssessment | null
   /** Most recent manual ("Manual Cart") assessment, or null. */
