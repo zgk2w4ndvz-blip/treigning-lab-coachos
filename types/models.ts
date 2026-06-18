@@ -28,6 +28,8 @@ export type {
 } from "@/types/database"
 
 export type {
+  MetabolicSource,
+  MetabolicCurvePhase,
   Role,
   ClientStatus,
   PlanDirection,
@@ -234,32 +236,52 @@ export interface MeasurementsData {
   ratios: MeasurementMetricSummary[]
 }
 
-// ---- Metabolic assessments -------------------------------------------------
+// ---- Stat Tracker / Metabolic assessments ----------------------------------
 
-/** One heart-rate training zone derived from max HR (% of max). */
-export interface HeartRateZone {
-  zone: number
-  label: string
-  pctLow: number
-  pctHigh: number
-  minBpm: number
-  maxBpm: number
+/** The Low Base / training zone derived from the Set Point (MEP ± 10, rounded). */
+export interface MetabolicZone {
+  low: number
+  high: number
 }
 
-/** An assessment plus its ordered curve points (oldest stage → newest). */
+/** An assessment plus its ordered curve points (by phase, then stage). */
 export interface MetabolicAssessmentWithPoints extends MetabolicAssessment {
   points: MetabolicCurvePoint[]
+}
+
+/** "Tape" card — latest body-measurement values surfaced on the Stat Tracker. */
+export interface StatTrackerTape {
+  bicep_in: number | null
+  neck_in: number | null
+  /** Hip/Waist % = hips ÷ waist × 100 (see lib/metrics/measurements). */
+  hipWaistPct: number | null
+}
+
+/** "Scale" card — latest body-composition values surfaced on the Stat Tracker. */
+export interface StatTrackerScale {
+  bodyFatPct: number | null
+  bodyWaterLbs: number | null
+  /** Lean Body Mass = weight − body-fat mass (lb). */
+  leanBodyMassLbs: number | null
 }
 
 export interface MetabolicData {
   /** All assessments for the client, newest first. */
   assessments: MetabolicAssessment[]
-  /** Most recent assessment with its curve points, or null if none. */
+  /** Most recent assessment (any source) with its curve points, or null. */
   latest: MetabolicAssessmentWithPoints | null
-  /** HR zones derived from the latest assessment's max HR (empty if unknown). */
-  zones: HeartRateZone[]
+  /** Most recent device ("Cart") assessment, or null. */
+  latestCart: MetabolicAssessment | null
+  /** Most recent manual ("Manual Cart") assessment, or null. */
+  latestManual: MetabolicAssessment | null
+  /** Zone = round(Set Point ± 10) from the latest assessment, or null. */
+  zone: MetabolicZone | null
   /** The client's current Low Base prescription (push-MEP target), or null. */
   lowBase: LowBasePrescription | null
+  /** Tape card (latest body_measurements). */
+  tape: StatTrackerTape
+  /** Scale card (latest weight_logs). */
+  scale: StatTrackerScale
 }
 
 /** 360° snapshot powering the client overview page. */

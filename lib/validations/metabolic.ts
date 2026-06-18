@@ -20,10 +20,11 @@ const optText = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
-/** A single measured curve point (one test stage / load). */
+/** A single curve sample (time-series point within one test phase). */
 export const curvePointSchema = z.object({
+  phase: z.enum(["increase", "decrease"]),
   stage: z.coerce.number().int().min(0),
-  intensity: optNum,
+  elapsed_sec: optNum,
   heart_rate_bpm: optNum,
   ventilation_l_min: optNum,
   vo2: optNum,
@@ -32,15 +33,17 @@ export const curvePointSchema = z.object({
 export type CurvePointInput = z.infer<typeof curvePointSchema>
 
 /**
- * A metabolic assessment. Scalar fields come from the form; `points` is a JSON
- * string (a serialized CurvePointInput[]) produced by the client form's curve
- * editor. Empty / malformed JSON yields no points rather than an error.
+ * A metabolic ("Stat Tracker") assessment. `source` is the Cart vs Manual Cart
+ * origin; `points` is a JSON string (serialized CurvePointInput[]) produced by
+ * the client curve editor. Empty / malformed JSON yields no points (not an error).
  */
 export const metabolicSchema = z.object({
+  source: z.enum(["cart", "manual_cart"]).default("manual_cart"),
   vo2_max: optNum,
-  mep_bpm: optNum,
-  aerobic_threshold_bpm: optNum,
+  mep_bpm: optNum, // "Set Point"
+  aerobic_threshold_bpm: optNum, // "Aerobic"
   max_hr_bpm: optNum,
+  calories_burned_per_min: optNum, // Manual Cart only
   assessed_at: optDateTime,
   notes: optText,
   points: z

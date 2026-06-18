@@ -55,15 +55,18 @@ export async function logMetabolicAssessmentAction(
       addStoredAssessment(clientId, {
         id: assessmentId,
         assessedAt,
+        source: d.source,
         vo2Max: d.vo2_max,
         mepBpm: d.mep_bpm,
         aerobicThresholdBpm: d.aerobic_threshold_bpm,
         maxHrBpm: d.max_hr_bpm,
+        caloriesBurnedPerMin: d.calories_burned_per_min,
         notes: d.notes,
         points: d.points.map((p) => ({
           id: randomUUID(),
+          phase: p.phase,
           stage: p.stage,
-          intensity: p.intensity,
+          elapsedSec: p.elapsed_sec,
           heartRateBpm: p.heart_rate_bpm,
           ventilationLMin: p.ventilation_l_min,
           vo2: p.vo2,
@@ -77,10 +80,12 @@ export async function logMetabolicAssessmentAction(
         client_id: clientId,
         logged_by: coach.id,
         assessed_at: assessedAt,
+        source: d.source,
         vo2_max: d.vo2_max,
         mep_bpm: d.mep_bpm,
         aerobic_threshold_bpm: d.aerobic_threshold_bpm,
         max_hr_bpm: d.max_hr_bpm,
+        calories_burned_per_min: d.calories_burned_per_min,
         notes: d.notes,
       })
       if (aErr) return { ok: false, error: aErr.message }
@@ -90,8 +95,9 @@ export async function logMetabolicAssessmentAction(
           d.points.map((p) => ({
             assessment_id: assessmentId,
             client_id: clientId,
+            phase: p.phase,
             stage: p.stage,
-            intensity: p.intensity,
+            elapsed_sec: p.elapsed_sec,
             heart_rate_bpm: p.heart_rate_bpm,
             ventilation_l_min: p.ventilation_l_min,
             vo2: p.vo2,

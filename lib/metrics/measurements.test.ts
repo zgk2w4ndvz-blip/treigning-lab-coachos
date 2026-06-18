@@ -3,7 +3,11 @@
 
 import assert from "node:assert/strict"
 
-import { hipWaistRatio, waistHeightRatio } from "@/lib/metrics/measurements"
+import {
+  hipWaistPercent,
+  hipWaistRatio,
+  waistHeightRatio,
+} from "@/lib/metrics/measurements"
 
 // ---- Hip / Waist -----------------------------------------------------------
 assert.equal(hipWaistRatio({ hips_in: 40, waist_in: 32 }), 1.25)
@@ -23,5 +27,11 @@ assert.equal(waistHeightRatio({ waist_in: 32, height_in: 70 }), 0.46) // rounds 
 assert.equal(waistHeightRatio({ waist_in: null, height_in: 68 }), null)
 assert.equal(waistHeightRatio({ waist_in: 34, height_in: null }), null)
 assert.equal(waistHeightRatio({ waist_in: 34, height_in: 0 }), null)
+
+// ---- Hip/Waist % (Stat Tracker "Tape" card: hips ÷ waist × 100) ------------
+assert.equal(hipWaistPercent({ hips_in: 32, waist_in: 32 }), 100)
+assert.equal(hipWaistPercent({ hips_in: 32.3, waist_in: 32 }), 100.94)
+assert.equal(hipWaistPercent({ hips_in: null, waist_in: 32 }), null)
+assert.equal(hipWaistPercent({ hips_in: 32, waist_in: 0 }), null)
 
 console.log("measurements ratio tests passed")

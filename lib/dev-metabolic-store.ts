@@ -10,10 +10,13 @@ import "server-only"
 import fs from "node:fs"
 import path from "node:path"
 
+import type { MetabolicCurvePhase, MetabolicSource } from "@/types/models"
+
 export interface StoredCurvePoint {
   id: string
+  phase: MetabolicCurvePhase
   stage: number
-  intensity: number | null
+  elapsedSec: number | null
   heartRateBpm: number | null
   ventilationLMin: number | null
   vo2: number | null
@@ -22,10 +25,12 @@ export interface StoredCurvePoint {
 export interface StoredAssessment {
   id: string
   assessedAt: string // ISO datetime
+  source: MetabolicSource
   vo2Max: number | null
   mepBpm: number | null
   aerobicThresholdBpm: number | null
   maxHrBpm: number | null
+  caloriesBurnedPerMin: number | null
   notes: string | null
   points: StoredCurvePoint[]
 }

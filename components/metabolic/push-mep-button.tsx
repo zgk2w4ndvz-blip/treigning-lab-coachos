@@ -28,7 +28,7 @@ export function PushMepButton({
     start(async () => {
       const res = await pushMepToLowBaseAction(clientId, assessmentId)
       if (res.ok) {
-        toast.success("MEP pushed to Low Base")
+        toast.success("Set Point pushed to Low Base")
         router.refresh()
       } else {
         toast.error(res.error ?? "Push failed")
@@ -43,10 +43,10 @@ export function PushMepButton({
       variant="secondary"
       disabled={pending || mep == null}
       onClick={onPush}
-      title={mep == null ? "This assessment has no MEP value" : "Push MEP to Low Base"}
+      title={mep == null ? "This assessment has no Set Point value" : "Push Set Point to Low Base (MEP)"}
     >
       <ArrowRightCircle className="mr-1.5 size-4" />
-      {pending ? "Pushing…" : "Push MEP to Low Base"}
+      {pending ? "Pushing…" : "Push Set Point to Low Base"}
     </Button>
   )
 }

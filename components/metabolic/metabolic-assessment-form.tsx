@@ -8,31 +8,38 @@ import { Plus, Trash2 } from "lucide-react"
 
 import { logMetabolicAssessmentAction } from "@/lib/actions/metabolic"
 import type { ActionState } from "@/lib/actions/types"
+import type { MetabolicCurvePhase } from "@/types/models"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface PointRow {
-  intensity: string
+  phase: MetabolicCurvePhase
+  elapsed_sec: string
   heart_rate_bpm: string
   ventilation_l_min: string
   vo2: string
 }
 
-const EMPTY_ROW: PointRow = {
-  intensity: "",
+const emptyRow = (phase: MetabolicCurvePhase): PointRow => ({
+  phase,
+  elapsed_sec: "",
   heart_rate_bpm: "",
   ventilation_l_min: "",
   vo2: "",
-}
+})
 
 const SCALARS: { name: string; label: string; step: string }[] = [
-  { name: "vo2_max", label: "VO₂ Max (ml/kg/min)", step: "0.1" },
-  { name: "mep_bpm", label: "MEP (bpm)", step: "0.01" },
-  { name: "aerobic_threshold_bpm", label: "Aerobic Threshold (bpm)", step: "0.01" },
+  { name: "vo2_max", label: "VO₂ Max (ml/kg/min)", step: "0.01" },
+  { name: "mep_bpm", label: "Set Point (bpm)", step: "0.01" },
   { name: "max_hr_bpm", label: "Max HR (bpm)", step: "1" },
+  { name: "aerobic_threshold_bpm", label: "Aerobic (bpm)", step: "0.01" },
+  { name: "calories_burned_per_min", label: "Calories Burned/min", step: "0.1" },
 ]
+
+const selectClass =
+  "border-input bg-background h-9 rounded-md border px-2 text-sm shadow-xs"
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -48,7 +55,7 @@ const num = (s: string) => (s.trim() === "" ? null : Number(s))
 export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
-  const [rows, setRows] = useState<PointRow[]>([{ ...EMPTY_ROW }])
+  const [rows, setRows] = useState<PointRow[]>([emptyRow("increase")])
   const [state, formAction] = useActionState<ActionState, FormData>(
     logMetabolicAssessmentAction.bind(null, clientId),
     { ok: false }
@@ -58,7 +65,7 @@ export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
     if (state.ok) {
       toast.success("Assessment saved")
       formRef.current?.reset()
-      setRows([{ ...EMPTY_ROW }])
+      setRows([emptyRow("increase")])
       router.refresh()
     } else if (state.error) {
       toast.error(state.error)
@@ -66,19 +73,20 @@ export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
-  // Serialize non-empty rows (those with at least one value) into curve points.
+  // Serialize rows that carry at least one measured value into curve points.
   const pointsJson = JSON.stringify(
     rows
       .map((r, i) => ({
+        phase: r.phase,
         stage: i,
-        intensity: num(r.intensity),
+        elapsed_sec: num(r.elapsed_sec),
         heart_rate_bpm: num(r.heart_rate_bpm),
         ventilation_l_min: num(r.ventilation_l_min),
         vo2: num(r.vo2),
       }))
       .filter(
         (p) =>
-          p.intensity != null ||
+          p.elapsed_sec != null ||
           p.heart_rate_bpm != null ||
           p.ventilation_l_min != null ||
           p.vo2 != null
@@ -86,19 +94,28 @@ export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
   )
 
   function updateRow(idx: number, key: keyof PointRow, value: string) {
-    setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, [key]: value } : r)))
+    setRows((rs) =>
+      rs.map((r, i) => (i === idx ? { ...r, [key]: value } : r))
+    )
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Log metabolic assessment</CardTitle>
+        <CardTitle className="text-base">Log assessment</CardTitle>
       </CardHeader>
       <CardContent>
         <form ref={formRef} action={formAction} className="space-y-4">
           <input type="hidden" name="points" value={pointsJson} />
 
           <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="source">Source</Label>
+              <select id="source" name="source" className={selectClass} defaultValue="manual_cart">
+                <option value="manual_cart">Manual Cart</option>
+                <option value="cart">Cart</option>
+              </select>
+            </div>
             {SCALARS.map((f) => (
               <div key={f.name} className="grid gap-1.5">
                 <Label htmlFor={f.name}>{f.label}</Label>
@@ -116,20 +133,33 @@ export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Curve points</p>
-            <div className="text-muted-foreground grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 px-1 text-[11px]">
-              <span>Intensity</span>
+            <p className="text-sm font-medium">Curve samples</p>
+            <div className="text-muted-foreground grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr_0.9fr_auto] gap-2 px-1 text-[11px]">
+              <span>Phase</span>
+              <span>Time (s)</span>
               <span>HR (bpm)</span>
               <span>VE (L/min)</span>
               <span>VO₂</span>
               <span className="w-7" />
             </div>
             {rows.map((r, i) => (
-              <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-center gap-2">
+              <div
+                key={i}
+                className="grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr_0.9fr_auto] items-center gap-2"
+              >
+                <select
+                  className={selectClass}
+                  aria-label={`Phase row ${i + 1}`}
+                  value={r.phase}
+                  onChange={(e) => updateRow(i, "phase", e.target.value)}
+                >
+                  <option value="increase">Increase</option>
+                  <option value="decrease">Decrease</option>
+                </select>
                 <Input
-                  type="number" step="0.1" aria-label={`Intensity row ${i + 1}`}
-                  value={r.intensity}
-                  onChange={(e) => updateRow(i, "intensity", e.target.value)}
+                  type="number" step="0.1" aria-label={`Time row ${i + 1}`}
+                  value={r.elapsed_sec}
+                  onChange={(e) => updateRow(i, "elapsed_sec", e.target.value)}
                 />
                 <Input
                   type="number" step="0.1" aria-label={`Heart rate row ${i + 1}`}
@@ -157,12 +187,20 @@ export function MetabolicAssessmentForm({ clientId }: { clientId: string }) {
                 </Button>
               </div>
             ))}
-            <Button
-              type="button" variant="outline" size="sm"
-              onClick={() => setRows((rs) => [...rs, { ...EMPTY_ROW }])}
-            >
-              <Plus className="mr-1 size-3.5" /> Add point
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button" variant="outline" size="sm"
+                onClick={() => setRows((rs) => [...rs, emptyRow("increase")])}
+              >
+                <Plus className="mr-1 size-3.5" /> Increase point
+              </Button>
+              <Button
+                type="button" variant="outline" size="sm"
+                onClick={() => setRows((rs) => [...rs, emptyRow("decrease")])}
+              >
+                <Plus className="mr-1 size-3.5" /> Decrease point
+              </Button>
+            </div>
           </div>
 
           <div className="flex justify-end">

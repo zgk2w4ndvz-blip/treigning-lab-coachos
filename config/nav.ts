@@ -61,7 +61,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
     { label: "Hydration", segment: "hydration", icon: Droplets },
     { label: "Supplements", segment: "supplements", icon: Pill },
     { label: "Recovery", segment: "recovery", icon: HeartPulse },
-    { label: "Metabolic", segment: "metabolic", icon: Gauge },
+    { label: "Stat Tracker", segment: "metabolic", icon: Gauge },
     { label: "Low Base", segment: "low-base", icon: Activity },
     { label: "Training", segment: "training", icon: Dumbbell },
     { label: "Competitions", segment: "competitions", icon: Trophy },

@@ -8,28 +8,41 @@ import {
   type StoredCurvePoint,
 } from "@/lib/dev-metabolic-store"
 import { getLowBasePrescription } from "@/lib/data/low-base"
-import { heartRateZones } from "@/lib/metrics/metabolic"
+import { getMeasurements } from "@/lib/data/measurements"
+import { getBodyComposition } from "@/lib/data/body-composition"
+import { setPointZone } from "@/lib/metrics/metabolic"
+import { hipWaistPercent } from "@/lib/metrics/measurements"
 import type {
+  BodyMeasurement,
   LowBasePrescription,
   MetabolicAssessment,
   MetabolicAssessmentWithPoints,
   MetabolicCurvePoint,
   MetabolicData,
+  StatTrackerScale,
+  StatTrackerTape,
+  WeightLog,
 } from "@/types/models"
 
 const COACH = "00000000-0000-0000-0000-0000000000c0"
 
-/** Display metadata for the four scalar metrics (order = display order). */
+/**
+ * Scalar metric metadata for the Cart / Manual Cart cards. The UI labels are the
+ * Treigning Lab terms (Set Point ← mep_bpm, Aerobic ← aerobic_threshold_bpm).
+ */
 export const METABOLIC_METRICS: {
-  key: "vo2_max" | "mep_bpm" | "aerobic_threshold_bpm" | "max_hr_bpm"
+  key: "vo2_max" | "mep_bpm" | "aerobic_threshold_bpm" | "max_hr_bpm" | "calories_burned_per_min"
   label: string
   unit: string
 }[] = [
   { key: "vo2_max", label: "VO₂ Max", unit: "ml/kg/min" },
-  { key: "mep_bpm", label: "MEP", unit: "bpm" },
-  { key: "aerobic_threshold_bpm", label: "Aerobic Threshold", unit: "bpm" },
+  { key: "mep_bpm", label: "Set Point", unit: "bpm" },
   { key: "max_hr_bpm", label: "Max HR", unit: "bpm" },
+  { key: "aerobic_threshold_bpm", label: "Aerobic", unit: "bpm" },
+  { key: "calories_burned_per_min", label: "Calories Burned/min", unit: "kcal" },
 ]
+
+// ---- dev-store → row mappers -----------------------------------------------
 
 function storedPointToRow(
   assessmentId: string,
@@ -40,8 +53,9 @@ function storedPointToRow(
     id: p.id,
     assessment_id: assessmentId,
     client_id: clientId,
+    phase: p.phase,
+    elapsed_sec: p.elapsedSec,
     stage: p.stage,
-    intensity: p.intensity,
     heart_rate_bpm: p.heartRateBpm,
     ventilation_l_min: p.ventilationLMin,
     vo2: p.vo2,
@@ -58,46 +72,88 @@ function storedToAssessment(
     client_id: clientId,
     logged_by: COACH,
     assessed_at: a.assessedAt,
+    source: a.source,
     vo2_max: a.vo2Max,
     mep_bpm: a.mepBpm,
     aerobic_threshold_bpm: a.aerobicThresholdBpm,
     max_hr_bpm: a.maxHrBpm,
+    calories_burned_per_min: a.caloriesBurnedPerMin,
     notes: a.notes,
     created_at: a.assessedAt,
     updated_at: a.assessedAt,
-    points: [...a.points]
-      .sort((x, y) => x.stage - y.stage)
-      .map((p) => storedPointToRow(a.id, clientId, p)),
+    points: sortPoints(a.points.map((p) => storedPointToRow(a.id, clientId, p))),
   }
 }
 
-/** Drop the curve points from an assessment for the list view (smaller payload). */
+/** Order curve points by phase (increase first), then stage. */
+function sortPoints(points: MetabolicCurvePoint[]): MetabolicCurvePoint[] {
+  const order = { increase: 0, decrease: 1 } as const
+  return [...points].sort(
+    (a, b) => order[a.phase] - order[b.phase] || a.stage - b.stage
+  )
+}
+
+/** Drop curve points for the list view (only `latest` needs them). */
 function scalarOnly(a: MetabolicAssessmentWithPoints): MetabolicAssessment {
   return {
     id: a.id,
     client_id: a.client_id,
     logged_by: a.logged_by,
     assessed_at: a.assessed_at,
+    source: a.source,
     vo2_max: a.vo2_max,
     mep_bpm: a.mep_bpm,
     aerobic_threshold_bpm: a.aerobic_threshold_bpm,
     max_hr_bpm: a.max_hr_bpm,
+    calories_burned_per_min: a.calories_burned_per_min,
     notes: a.notes,
     created_at: a.created_at,
     updated_at: a.updated_at,
   }
 }
 
-function build(
+// ---- Tape / Scale aggregation ----------------------------------------------
+
+function buildTape(latest: BodyMeasurement | null): StatTrackerTape {
+  if (!latest) return { bicep_in: null, neck_in: null, hipWaistPct: null }
+  return {
+    bicep_in: latest.bicep_in,
+    neck_in: latest.neck_in,
+    hipWaistPct: hipWaistPercent(latest),
+  }
+}
+
+function buildScale(latest: WeightLog | null): StatTrackerScale {
+  if (!latest) return { bodyFatPct: null, bodyWaterLbs: null, leanBodyMassLbs: null }
+  const lbm =
+    latest.weight_lbs != null && latest.body_fat_mass_lbs != null
+      ? Math.round((latest.weight_lbs - latest.body_fat_mass_lbs) * 100) / 100
+      : null
+  return {
+    bodyFatPct: latest.body_fat_pct,
+    bodyWaterLbs: latest.total_body_water_lbs,
+    leanBodyMassLbs: lbm,
+  }
+}
+
+// ---- assembly --------------------------------------------------------------
+
+function assemble(
   assessments: MetabolicAssessment[],
   latest: MetabolicAssessmentWithPoints | null,
-  lowBase: LowBasePrescription | null
+  lowBase: LowBasePrescription | null,
+  tape: StatTrackerTape,
+  scale: StatTrackerScale
 ): MetabolicData {
   return {
     assessments,
     latest,
-    zones: heartRateZones(latest?.max_hr_bpm ?? null),
+    latestCart: assessments.find((a) => a.source === "cart") ?? null,
+    latestManual: assessments.find((a) => a.source === "manual_cart") ?? null,
+    zone: setPointZone(latest?.mep_bpm ?? null),
     lowBase,
+    tape,
+    scale,
   }
 }
 
@@ -106,35 +162,51 @@ async function bypass(clientId: string): Promise<MetabolicData> {
     .map((a) => storedToAssessment(clientId, a))
     .sort((a, b) => b.assessed_at.localeCompare(a.assessed_at)) // newest first
   const latest = stored[0] ?? null
-  const lowBase = await getLowBasePrescription(clientId)
-  // Strip points off the list view (only `latest` needs to carry them).
-  const list: MetabolicAssessment[] = stored.map(scalarOnly)
-  return build(list, latest, lowBase)
+  const [lowBase, measurements, bodyComp] = await Promise.all([
+    getLowBasePrescription(clientId),
+    getMeasurements(clientId),
+    getBodyComposition(clientId),
+  ])
+  return assemble(
+    stored.map(scalarOnly),
+    latest,
+    lowBase,
+    buildTape(measurements.latest),
+    buildScale(bodyComp.latest)
+  )
 }
 
 async function real(clientId: string): Promise<MetabolicData> {
   const supabase = await createServerSupabase()
-  const { data: assessments } = await supabase
-    .from("metabolic_assessments")
-    .select("*")
-    .eq("client_id", clientId)
-    .order("assessed_at", { ascending: false })
+  const [{ data: rows }, lowBase, measurements, bodyComp] = await Promise.all([
+    supabase
+      .from("metabolic_assessments")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("assessed_at", { ascending: false }),
+    getLowBasePrescription(clientId),
+    getMeasurements(clientId),
+    getBodyComposition(clientId),
+  ])
 
-  const list = assessments ?? []
-  const lowBase = await getLowBasePrescription(clientId)
-  if (list.length === 0) return build(list, null, lowBase)
+  const list = rows ?? []
+  const tape = buildTape(measurements.latest)
+  const scale = buildScale(bodyComp.latest)
+  if (list.length === 0) return assemble(list, null, lowBase, tape, scale)
 
   const head = list[0]
   const { data: points } = await supabase
     .from("metabolic_curve_points")
     .select("*")
     .eq("assessment_id", head.id)
-    .order("stage", { ascending: true })
-
-  return build(list, { ...head, points: points ?? [] }, lowBase)
+  const latest: MetabolicAssessmentWithPoints = {
+    ...head,
+    points: sortPoints(points ?? []),
+  }
+  return assemble(list, latest, lowBase, tape, scale)
 }
 
-/** Full metabolic-assessments module data for one client. */
+/** Full Stat Tracker (metabolic) module data for one client. */
 export async function getMetabolic(clientId: string): Promise<MetabolicData> {
   return DEV_AUTH_BYPASS ? bypass(clientId) : real(clientId)
 }

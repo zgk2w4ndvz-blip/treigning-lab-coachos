@@ -31,6 +31,8 @@ export type WeightCutStatus =
   | "completed"
   | "cancelled"
 export type WeighInKind = "check_in" | "official" | "unofficial"
+export type MetabolicSource = "cart" | "manual_cart"
+export type MetabolicCurvePhase = "increase" | "decrease"
 export type ScheduleSessionType =
   | "training"
   | "consultation"
@@ -632,25 +634,28 @@ export interface Database {
         client_id: string
         logged_by: string | null
         assessed_at: Timestamp
+        source: MetabolicSource
         vo2_max: number | null
         mep_bpm: number | null
         aerobic_threshold_bpm: number | null
         max_hr_bpm: number | null
+        calories_burned_per_min: number | null
         notes: string | null
         created_at: Timestamp
         updated_at: Timestamp
-      }, Defaults | "assessed_at" | "updated_at">
+      }, Defaults | "assessed_at" | "source" | "updated_at">
       metabolic_curve_points: Table<{
         id: string
         assessment_id: string
         client_id: string
+        phase: MetabolicCurvePhase
+        elapsed_sec: number | null
         stage: number
-        intensity: number | null
         heart_rate_bpm: number | null
         ventilation_l_min: number | null
         vo2: number | null
         created_at: Timestamp
-      }, Defaults>
+      }, Defaults | "phase">
     }
     Views: Record<string, never>
     Functions: Record<string, never>
