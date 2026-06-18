@@ -28,6 +28,8 @@ export type {
 } from "@/types/database"
 
 export type {
+  MetabolicSource,
+  MetabolicCurvePhase,
   Role,
   ClientStatus,
   PlanDirection,
@@ -54,6 +56,8 @@ export type ClientInvite = Tables<"client_invites">
 export type WeightGoal = Tables<"weight_goals">
 export type WeightLog = Tables<"weight_logs">
 export type BodyMeasurement = Tables<"body_measurements">
+export type MetabolicAssessment = Tables<"metabolic_assessments">
+export type MetabolicCurvePoint = Tables<"metabolic_curve_points">
 export type NutritionPlan = Tables<"nutrition_plans">
 export type NutritionLog = Tables<"nutrition_logs">
 export type HydrationLog = Tables<"hydration_logs">
@@ -230,6 +234,60 @@ export interface MeasurementsData {
   sites: MeasurementMetricSummary[]
   /** Derived ratio metrics (Hip/Waist, Waist/Height). */
   ratios: MeasurementMetricSummary[]
+}
+
+// ---- Stat Tracker / Metabolic assessments ----------------------------------
+
+/** The Low Base / training zone derived from the Set Point (MEP ± 10, rounded). */
+export interface MetabolicZone {
+  low: number
+  high: number
+}
+
+/** An assessment plus its ordered curve points (by phase, then stage). */
+export interface MetabolicAssessmentWithPoints extends MetabolicAssessment {
+  points: MetabolicCurvePoint[]
+}
+
+/** "Tape" card — latest body-measurement values surfaced on the Stat Tracker. */
+export interface StatTrackerTape {
+  bicep_in: number | null
+  neck_in: number | null
+  /** Hip/Waist % = hips ÷ waist × 100 (see lib/metrics/measurements). */
+  hipWaistPct: number | null
+}
+
+/** "Scale" card — latest body-composition values surfaced on the Stat Tracker. */
+export interface StatTrackerScale {
+  bodyFatPct: number | null
+  bodyWaterLbs: number | null
+  /** Lean Body Mass = weight − body-fat mass (lb). */
+  leanBodyMassLbs: number | null
+}
+
+export interface MetabolicData {
+  /** All assessments for the client, newest first. */
+  assessments: MetabolicAssessment[]
+  /** Most recent assessment (any source) with its curve points, or null. */
+  latest: MetabolicAssessmentWithPoints | null
+  /**
+   * Most recent assessment that actually has curve points (the cart test that
+   * produced the ventilation/HR curves), or null. Distinct from `latest` so a
+   * newer scalar-only Manual Cart entry doesn't blank the curves.
+   */
+  latestCurve: MetabolicAssessmentWithPoints | null
+  /** Most recent device ("Cart") assessment, or null. */
+  latestCart: MetabolicAssessment | null
+  /** Most recent manual ("Manual Cart") assessment, or null. */
+  latestManual: MetabolicAssessment | null
+  /** Zone = round(Set Point ± 10) from the latest assessment, or null. */
+  zone: MetabolicZone | null
+  /** The client's current Low Base prescription (push-MEP target), or null. */
+  lowBase: LowBasePrescription | null
+  /** Tape card (latest body_measurements). */
+  tape: StatTrackerTape
+  /** Scale card (latest weight_logs). */
+  scale: StatTrackerScale
 }
 
 /** 360° snapshot powering the client overview page. */

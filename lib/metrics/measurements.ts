@@ -15,6 +15,20 @@ export function hipWaistRatio(m: {
   return round2(m.hips_in / m.waist_in)
 }
 
+/**
+ * Hip/Waist percent (hips ÷ waist × 100), as shown on the Stat Tracker "Tape"
+ * card (values like 98%, 101%). Isolated here so the orientation/formula can be
+ * changed in one place if the real definition turns out different. Null unless
+ * both present & waist > 0. Rounded to 2 decimals.
+ */
+export function hipWaistPercent(m: {
+  hips_in: number | null
+  waist_in: number | null
+}): number | null {
+  if (m.hips_in == null || m.waist_in == null || m.waist_in <= 0) return null
+  return round2((m.hips_in / m.waist_in) * 100)
+}
+
 /** Waist-to-height ratio (waist ÷ height). Null unless both present & height > 0. */
 export function waistHeightRatio(m: {
   waist_in: number | null
