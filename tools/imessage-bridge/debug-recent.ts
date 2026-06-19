@@ -14,9 +14,21 @@ import { fetchHandles } from "./api"
 import { buildAllowList, narrowHandles, normalizeHandleQuery } from "./filter"
 
 const APPLE_EPOCH = 978_307_200
+const OPERATING_TZ = "America/Chicago"
 
 function pad(s: string, n: number): string {
   return s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length)
+}
+
+/** Render a UTC ISO string in the operating timezone (the day the Mac shows). */
+function inOperatingTz(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "(invalid)"
+  return d.toLocaleString("en-US", {
+    timeZone: OPERATING_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  })
 }
 
 async function main() {
@@ -71,7 +83,7 @@ async function main() {
       `${flags.since ? `, since ${flags.since}` : ""}.\n`
   )
   console.log(
-    `${pad("ROWID", 8)} ${pad("DIR", 4)} ${pad("TIMESTAMP", 22)} ${pad("HANDLE", 24)} ${pad("MATCH", 6)} ${pad("ATHLETE", 18)} ${pad("DECODE", 7)}${preview ? " PREVIEW(20)" : ""}`
+    `${pad("ROWID", 8)} ${pad("DIR", 4)} ${pad("RAW message.date", 20)} ${pad("UTC ISO", 22)} ${pad("CENTRAL", 18)} ${pad("HANDLE", 24)} ${pad("MATCH", 6)} ${pad("ATHLETE", 18)} ${pad("DECODE", 7)}${preview ? " PREVIEW(20)" : ""}`
   )
 
   let shown = 0
@@ -91,9 +103,10 @@ async function main() {
     const decodable = body != null && body.length > 0
     const prev = preview && decodable ? ` ${body!.slice(0, 20).replace(/\s+/g, " ")}` : ""
     const dir = m.isFromMe ? "out" : "in"
+    const iso = appleDateToIso(m.date)
 
     console.log(
-      `${pad(String(m.rowid), 8)} ${pad(dir, 4)} ${pad(appleDateToIso(m.date), 22)} ${pad(handle, 24)} ${pad(matched ? "yes" : "no", 6)} ${pad(name, 18)} ${pad(decodable ? "ok" : "no", 7)}${prev}`
+      `${pad(String(m.rowid), 8)} ${pad(dir, 4)} ${pad(String(m.date), 20)} ${pad(iso, 22)} ${pad(inOperatingTz(iso), 18)} ${pad(handle, 24)} ${pad(matched ? "yes" : "no", 6)} ${pad(name, 18)} ${pad(decodable ? "ok" : "no", 7)}${prev}`
     )
     shown++
   }
