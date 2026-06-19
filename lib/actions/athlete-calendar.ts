@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache"
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
+import { getOperatingTimeZone } from "@/lib/data/settings"
+import { wallClockToUtc } from "@/lib/calendar/timezone"
 import { calendarEventSchema } from "@/lib/validations/athlete-calendar"
 import type { ActionState } from "@/lib/actions/types"
 import type { CalendarStatus } from "@/types/models"
@@ -50,10 +52,15 @@ export async function createCalendarEventAction(
   const d = r.data
   try {
     const coach = await requireCoach()
+    const tz = await getOperatingTimeZone()
+    const startsAt = wallClockToUtc(d.starts_at, tz)
+    if (!startsAt) return { ok: false, error: "Invalid start date/time." }
+    const endsAt = d.ends_at ? wallClockToUtc(d.ends_at, tz) : null
     const supabase = await createServerSupabase()
     const { error } = await supabase.from("athlete_calendar_events").insert({
       coach_id: coach.id, client_id: clientId, category: d.category, title: d.title,
-      description: d.description, starts_at: d.starts_at, ends_at: d.ends_at,
+      description: d.description,
+      starts_at: startsAt.toISOString(), ends_at: endsAt?.toISOString() ?? null,
       all_day: d.all_day, status: d.status, recurrence: d.recurrence,
       recurrence_until: d.recurrence_until,
     })
@@ -77,12 +84,17 @@ export async function updateCalendarEventAction(
   if (!r.success) return fieldErrors(r.error)
   const d = r.data
   try {
+    const tz = await getOperatingTimeZone()
+    const startsAt = wallClockToUtc(d.starts_at, tz)
+    if (!startsAt) return { ok: false, error: "Invalid start date/time." }
+    const endsAt = d.ends_at ? wallClockToUtc(d.ends_at, tz) : null
     const supabase = await createServerSupabase()
     const { error } = await supabase
       .from("athlete_calendar_events")
       .update({
         category: d.category, title: d.title, description: d.description,
-        starts_at: d.starts_at, ends_at: d.ends_at, all_day: d.all_day,
+        starts_at: startsAt.toISOString(), ends_at: endsAt?.toISOString() ?? null,
+        all_day: d.all_day,
         status: d.status, recurrence: d.recurrence, recurrence_until: d.recurrence_until,
         updated_at: new Date().toISOString(),
       })

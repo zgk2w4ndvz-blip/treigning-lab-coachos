@@ -3,6 +3,7 @@ import {
   getAthleteCalendarEvents,
   getAthleteCalendarOverrides,
 } from "@/lib/data/athlete-calendar"
+import { getOperatingTimeZone } from "@/lib/data/settings"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { AthleteCalendar } from "@/components/calendar/athlete-calendar"
 
@@ -13,9 +14,10 @@ export default async function ClientCalendarPage({
 }) {
   await requireCoach()
   const { clientId } = await params
-  const [events, overrides] = await Promise.all([
+  const [events, overrides, timeZone] = await Promise.all([
     getAthleteCalendarEvents(clientId),
     getAthleteCalendarOverrides(clientId),
+    getOperatingTimeZone(),
   ])
 
   return (
@@ -26,7 +28,7 @@ export default async function ClientCalendarPage({
           database.
         </p>
       ) : null}
-      <AthleteCalendar clientId={clientId} events={events} overrides={overrides} />
+      <AthleteCalendar clientId={clientId} events={events} overrides={overrides} timeZone={timeZone} />
     </div>
   )
 }
