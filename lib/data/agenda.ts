@@ -5,10 +5,33 @@ import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getAllComputedAlerts } from "@/lib/data/alerts"
 import { listActiveCutsForBoard } from "@/lib/data/combat"
 import { listClientsForRoster } from "@/lib/data/clients"
+import { getInboxPendingCount } from "@/lib/data/inbox"
+import { mockAthleteCalendar } from "@/lib/data/athlete-calendar"
+import { expandOccurrences } from "@/lib/calendar/recurrence"
+import { getOperatingTimeZone } from "@/lib/data/settings"
+import { dayKeyInZone, DEFAULT_OPERATING_TZ } from "@/lib/calendar/timezone"
+import { planDirection } from "@/lib/metrics/weight-plan"
+import {
+  bucketDay,
+  byStartsAt,
+  behindPlanToItem,
+  competitionToItem,
+  occurrenceToItem,
+  overdueTaskToItem,
+  recoveryToItem,
+  weightPlanBehind,
+} from "@/lib/agenda/build"
+import { fullName } from "@/lib/utils/format"
+import type {
+  AgendaAttention,
+  AgendaDashboard,
+  AgendaItem,
+} from "@/types/models"
 import {
   ensureImportedBaselines,
   getBypassAgendaCompTasks,
   getBypassClients,
+  getBypassCompetitions,
   getBypassTaskRows,
   hasImportedRoster,
 } from "@/lib/dev-roster-store"
@@ -376,4 +399,245 @@ async function buildLiveAgenda(): Promise<AgendaBase[]> {
       weighInToday: weighInToday.has(client.id),
     } satisfies AgendaBase
   })
+}
+
+// ============================================================================
+// Phase 2C — normalized Agenda dashboard (Today / Attention / Upcoming 7 days).
+// Aggregates existing sources only; reuses the timezone-safe calendar expansion
+// (lib/calendar/recurrence) — no new tables, no duplicated recurrence logic.
+// ============================================================================
+
+const DAY_MS = 86_400_000
+
+type SupabaseClient = Awaited<ReturnType<typeof createServerSupabase>>
+
+/** Weight plans whose latest weigh-in is behind the current week's target. */
+async function computeBehindPlans(
+  supabase: SupabaseClient,
+  todayKey: string,
+  nameById: Map<string, string>
+): Promise<AgendaItem[]> {
+  const { data: plans } = await supabase
+    .from("weight_plans")
+    .select("id, client_id, current_weight, goal_weight")
+    .eq("is_active", true)
+  if (!plans || plans.length === 0) return []
+
+  const planIds = plans.map((p) => p.id)
+  const clientIds = plans.map((p) => p.client_id)
+  const [{ data: targets }, { data: weights }] = await Promise.all([
+    supabase
+      .from("weight_plan_targets")
+      .select("plan_id, week_start, target_weight")
+      .in("plan_id", planIds)
+      .lte("week_start", todayKey)
+      .order("week_start", { ascending: false }),
+    supabase
+      .from("weight_logs")
+      .select("client_id, weight_lbs, logged_at")
+      .in("client_id", clientIds)
+      .order("logged_at", { ascending: false }),
+  ])
+
+  // current-week target = latest week_start <= today, per plan
+  const targetByPlan = new Map<string, number>()
+  for (const t of targets ?? []) {
+    if (!targetByPlan.has(t.plan_id) && t.target_weight != null) {
+      targetByPlan.set(t.plan_id, t.target_weight)
+    }
+  }
+  const latestByClient = new Map<string, number>()
+  for (const w of weights ?? []) {
+    if (!latestByClient.has(w.client_id) && w.weight_lbs != null) {
+      latestByClient.set(w.client_id, w.weight_lbs)
+    }
+  }
+
+  const items: AgendaItem[] = []
+  for (const p of plans) {
+    const target = targetByPlan.get(p.id) ?? null
+    const latest = latestByClient.get(p.client_id) ?? null
+    const direction = planDirection(p.current_weight, p.goal_weight)
+    if (weightPlanBehind({ latest, target, direction })) {
+      items.push(
+        behindPlanToItem(p.client_id, nameById.get(p.client_id) ?? null, `${latest} lb vs ${target} lb target`)
+      )
+    }
+  }
+  return items
+}
+
+/** Attention block: unapproved prescriptions, unreviewed messages, overdue
+ *  tasks, weight plans behind target. */
+async function computeAttention(
+  supabase: SupabaseClient,
+  todayKey: string,
+  nameById: Map<string, string>
+): Promise<AgendaAttention> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * DAY_MS).toISOString()
+  const [pending, { data: tasks }, { count: msgCount }, behindPlanItems] = await Promise.all([
+    getInboxPendingCount(),
+    supabase
+      .from("tasks")
+      .select("id, client_id, title, due_date, status")
+      .in("status", ["open", "in_progress"])
+      .not("due_date", "is", null)
+      .lt("due_date", todayKey),
+    supabase
+      .from("message_ingest")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "incoming")
+      .gte("received_at", sevenDaysAgo),
+    computeBehindPlans(supabase, todayKey, nameById),
+  ])
+
+  const overdueTaskItems = (tasks ?? []).map((t) =>
+    overdueTaskToItem(t as never, t.client_id ? nameById.get(t.client_id) ?? null : null)
+  )
+
+  return {
+    unapprovedPrescriptions: pending,
+    unreviewedMessages: msgCount ?? 0,
+    overdueTasks: overdueTaskItems.length,
+    weightPlansBehind: behindPlanItems.length,
+    overdueTaskItems,
+    behindPlanItems,
+  }
+}
+
+async function liveDashboard(
+  tz: string,
+  todayKey: string,
+  horizonKey: string,
+  rangeStart: Date,
+  rangeEnd: Date
+): Promise<AgendaDashboard> {
+  const supabase = await createServerSupabase()
+  const [{ data: clients }, { data: calEvents }, { data: overrides }, { data: comps }, { data: recovery }] =
+    await Promise.all([
+      supabase.from("clients").select("id, first_name, last_name"),
+      supabase.from("athlete_calendar_events").select("*"),
+      supabase.from("athlete_calendar_event_overrides").select("*"),
+      supabase
+        .from("competitions")
+        .select("id, client_id, name, competition_date, weight_class, status")
+        .gte("competition_date", todayKey)
+        .lte("competition_date", horizonKey)
+        .neq("status", "cancelled"),
+      supabase
+        .from("recovery_logs")
+        .select("id, client_id, logged_date, modalities")
+        .eq("logged_date", todayKey),
+    ])
+
+  const nameById = new Map((clients ?? []).map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+  const name = (id: string | null | undefined) => (id ? nameById.get(id) ?? null : null)
+
+  const calToday: AgendaItem[] = []
+  const calUpcoming: AgendaItem[] = []
+  for (const o of expandOccurrences(calEvents ?? [], rangeStart, rangeEnd, overrides ?? [], tz)) {
+    const bucket = bucketDay(o.date, todayKey, horizonKey)
+    if (bucket === "today") calToday.push(occurrenceToItem(o, name(o.event.client_id)))
+    else if (bucket === "upcoming") calUpcoming.push(occurrenceToItem(o, name(o.event.client_id)))
+  }
+
+  const compToday: AgendaItem[] = []
+  const compUpcoming: AgendaItem[] = []
+  for (const c of comps ?? []) {
+    if (!c.competition_date) continue
+    const item = competitionToItem(c as never, name(c.client_id))
+    const bucket = bucketDay(c.competition_date.slice(0, 10), todayKey, horizonKey)
+    if (bucket === "today") compToday.push(item)
+    else if (bucket === "upcoming") compUpcoming.push(item)
+  }
+
+  const recToday = (recovery ?? []).map((r) => recoveryToItem(r as never, name(r.client_id)))
+  const attention = await computeAttention(supabase, todayKey, nameById)
+
+  return {
+    today: [...calToday, ...compToday, ...recToday].sort(byStartsAt),
+    upcoming: [...calUpcoming, ...compUpcoming].sort(byStartsAt),
+    attention,
+    timeZone: tz,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function bypassDashboard(
+  tz: string,
+  todayKey: string,
+  horizonKey: string,
+  rangeStart: Date,
+  rangeEnd: Date
+): AgendaDashboard {
+  const clients = getBypassClients().filter((c) => c.status === "active")
+  const nameById = new Map(clients.map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+  const events = clients.flatMap((c) => mockAthleteCalendar(c.id))
+
+  const calToday: AgendaItem[] = []
+  const calUpcoming: AgendaItem[] = []
+  for (const o of expandOccurrences(events, rangeStart, rangeEnd, [], tz)) {
+    const bucket = bucketDay(o.date, todayKey, horizonKey)
+    if (bucket === "today") calToday.push(occurrenceToItem(o, nameById.get(o.event.client_id) ?? null))
+    else if (bucket === "upcoming") calUpcoming.push(occurrenceToItem(o, nameById.get(o.event.client_id) ?? null))
+  }
+
+  const compToday: AgendaItem[] = []
+  const compUpcoming: AgendaItem[] = []
+  for (const c of getBypassCompetitions()) {
+    if (!c.competition_date) continue
+    const item = competitionToItem(c, nameById.get(c.client_id) ?? null)
+    const bucket = bucketDay(c.competition_date.slice(0, 10), todayKey, horizonKey)
+    if (bucket === "today") compToday.push(item)
+    else if (bucket === "upcoming") compUpcoming.push(item)
+  }
+
+  return {
+    today: [...calToday, ...compToday].sort(byStartsAt),
+    upcoming: [...calUpcoming, ...compUpcoming].sort(byStartsAt),
+    attention: {
+      unapprovedPrescriptions: 0,
+      unreviewedMessages: 0,
+      overdueTasks: 0,
+      weightPlansBehind: 0,
+      overdueTaskItems: [],
+      behindPlanItems: [],
+    },
+    timeZone: tz,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+/** Full normalized agenda dashboard (Today / Attention / Upcoming 7 days). */
+export async function getAgendaDashboard(): Promise<AgendaDashboard> {
+  const tz = DEV_AUTH_BYPASS ? DEFAULT_OPERATING_TZ : await getOperatingTimeZone()
+  const now = new Date()
+  const todayKey = dayKeyInZone(now, tz)
+  const horizonKey = dayKeyInZone(new Date(now.getTime() + 7 * DAY_MS), tz)
+  const rangeStart = new Date(now.getTime() - DAY_MS)
+  const rangeEnd = new Date(now.getTime() + 8 * DAY_MS)
+  return DEV_AUTH_BYPASS
+    ? bypassDashboard(tz, todayKey, horizonKey, rangeStart, rangeEnd)
+    : liveDashboard(tz, todayKey, horizonKey, rangeStart, rangeEnd)
+}
+
+/** Lighter attention-only summary (for the coach dashboard integration). */
+export async function getAgendaAttention(): Promise<AgendaAttention> {
+  if (DEV_AUTH_BYPASS) {
+    const pending = await getInboxPendingCount()
+    return {
+      unapprovedPrescriptions: pending,
+      unreviewedMessages: 0,
+      overdueTasks: 0,
+      weightPlansBehind: 0,
+      overdueTaskItems: [],
+      behindPlanItems: [],
+    }
+  }
+  const tz = await getOperatingTimeZone()
+  const todayKey = dayKeyInZone(new Date(), tz)
+  const supabase = await createServerSupabase()
+  const { data: clients } = await supabase.from("clients").select("id, first_name, last_name")
+  const nameById = new Map((clients ?? []).map((c) => [c.id, fullName(c.first_name, c.last_name)]))
+  return computeAttention(supabase, todayKey, nameById)
 }

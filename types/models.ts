@@ -126,6 +126,49 @@ export interface WeightPlanData {
   /** Linked / next competition, if any. */
   competition: Competition | null
 }
+
+// ---- Daily Agenda (Phase 2C) -----------------------------------------------
+
+export type AgendaItemType =
+  | "calendar"
+  | "competition"
+  | "task"
+  | "prescription"
+  | "weight-plan"
+  | "recovery"
+
+export type AgendaItemPriority = "low" | "medium" | "high"
+
+/** A normalized agenda entry aggregated from existing CoachOS data sources. */
+export interface AgendaItem {
+  id: string
+  type: AgendaItemType
+  title: string
+  athleteId?: string
+  athleteName?: string
+  startsAt?: string // ISO datetime
+  detail?: string
+  href?: string
+  priority: AgendaItemPriority
+}
+
+/** Attention-required counts + the underlying items for direct links. */
+export interface AgendaAttention {
+  unapprovedPrescriptions: number
+  unreviewedMessages: number
+  overdueTasks: number
+  weightPlansBehind: number
+  overdueTaskItems: AgendaItem[]
+  behindPlanItems: AgendaItem[]
+}
+
+export interface AgendaDashboard {
+  today: AgendaItem[]
+  upcoming: AgendaItem[]
+  attention: AgendaAttention
+  timeZone: string
+  generatedAt: string
+}
 export type AthleteCalendarEvent = Tables<"athlete_calendar_events">
 export type AthleteCalendarEventOverride =
   Tables<"athlete_calendar_event_overrides">
