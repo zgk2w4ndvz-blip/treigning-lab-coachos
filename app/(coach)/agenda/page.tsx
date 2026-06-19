@@ -2,15 +2,16 @@ import { format } from "date-fns"
 import { Users, Scale, Dumbbell, AlertTriangle, Flag } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
-import { getDailyAgenda } from "@/lib/data/agenda"
+import { getDailyAgenda, getAgendaDashboard } from "@/lib/data/agenda"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { AgendaBoard } from "@/components/coach/agenda-board"
+import { AgendaDashboardView } from "@/components/agenda/agenda-dashboard"
 
 export default async function AgendaPage() {
   await requireCoach()
-  const agendas = await getDailyAgenda()
+  const [agendas, dashboard] = await Promise.all([getDailyAgenda(), getAgendaDashboard()])
 
   const urgent = agendas.filter((a) => a.priority === "urgent").length
   const attention = agendas.filter((a) => a.priority === "attention").length
@@ -47,6 +48,10 @@ export default async function AgendaPage() {
         <StatCard label="Sessions" value={sessions} icon={Dumbbell} />
       </div>
 
+      {/* Phase 2C — normalized command center (Today / Attention / Upcoming) */}
+      <AgendaDashboardView dashboard={dashboard} />
+
+      <h2 className="text-base font-semibold">By athlete</h2>
       {agendas.length === 0 ? (
         <EmptyState
           icon={Users}
