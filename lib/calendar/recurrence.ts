@@ -1,6 +1,17 @@
 // Pure recurrence expansion — turns base events into per-day occurrences within
 // a range. Client-safe (no I/O). Supports none / daily / weekly.
+//
+// All day-grouping and stepping resolve against an explicit operating timezone
+// (never the ambient runtime zone), so the server (UTC) and the browser produce
+// identical occurrence dates, and weekly events keep their local wall-clock time
+// across DST transitions.
 
+import {
+  DEFAULT_OPERATING_TZ,
+  addZonedDays,
+  dayKeyInZone,
+  zonedEndOfDay,
+} from "@/lib/calendar/timezone"
 import type {
   AthleteCalendarEvent,
   AthleteCalendarEventOverride,
@@ -9,14 +20,6 @@ import type {
 
 const DAY = 86_400_000
 const MAX_OCCURRENCES = 1000 // safety cap per event
-
-/** Local yyyy-MM-dd (so evening events group on the intended day). */
-function isoDate(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
 
 /** Lookup key for a per-occurrence override: event id + local day. */
 export function overrideKey(eventId: string, date: string): string {
@@ -28,9 +31,10 @@ function makeOccurrence(
   start: Date,
   durationMs: number | null,
   recurring: boolean,
-  overrides: Map<string, AthleteCalendarEventOverride>
+  overrides: Map<string, AthleteCalendarEventOverride>,
+  tz: string
 ): CalendarOccurrence {
-  const date = isoDate(start)
+  const date = dayKeyInZone(start, tz)
   const override = overrides.get(overrideKey(ev.id, date)) ?? null
   return {
     key: recurring ? `${ev.id}@${date}` : ev.id,
@@ -43,13 +47,15 @@ function makeOccurrence(
   }
 }
 
-/** Expand events into occurrences overlapping [rangeStart, rangeEnd].
- *  Pass per-occurrence overrides to resolve each occurrence's effective status. */
+/** Expand events into occurrences overlapping [rangeStart, rangeEnd], resolved
+ *  against the operating `timeZone`. Pass per-occurrence overrides to resolve
+ *  each occurrence's effective status. */
 export function expandOccurrences(
   events: AthleteCalendarEvent[],
   rangeStart: Date,
   rangeEnd: Date,
-  overrideRows: AthleteCalendarEventOverride[] = []
+  overrideRows: AthleteCalendarEventOverride[] = [],
+  timeZone: string = DEFAULT_OPERATING_TZ
 ): CalendarOccurrence[] {
   const out: CalendarOccurrence[] = []
   const rs = rangeStart.getTime()
@@ -66,27 +72,34 @@ export function expandOccurrences(
 
     if (ev.recurrence === "none") {
       const t = base.getTime()
-      if (t >= rs - DAY && t <= re) out.push(makeOccurrence(ev, base, durationMs, false, overrides))
+      if (t >= rs - DAY && t <= re) {
+        out.push(makeOccurrence(ev, base, durationMs, false, overrides, timeZone))
+      }
       continue
     }
 
-    const step = ev.recurrence === "weekly" ? 7 * DAY : DAY
+    const stepDays = ev.recurrence === "weekly" ? 7 : 1
     const untilTs = ev.recurrence_until
-      ? new Date(`${ev.recurrence_until}T23:59:59`).getTime()
+      ? (zonedEndOfDay(ev.recurrence_until, timeZone)?.getTime() ?? re)
       : re
     const hardEnd = Math.min(untilTs, re)
 
-    // Fast-forward to the first occurrence at or after the range start.
-    let t = base.getTime()
-    if (t < rs) {
-      const steps = Math.ceil((rs - t) / step)
-      t += steps * step
+    // Fast-forward close to the range start (civil stepping is done below).
+    let n = 0
+    if (base.getTime() < rs) {
+      n = Math.max(0, Math.floor((rs - base.getTime()) / (stepDays * DAY)) - 1)
     }
-    let count = 0
-    while (t <= hardEnd && count < MAX_OCCURRENCES) {
-      out.push(makeOccurrence(ev, new Date(t), durationMs, true, overrides))
-      t += step
-      count++
+    let guard = 0
+    while (guard < MAX_OCCURRENCES) {
+      // Each occurrence preserves the base wall-clock time in the zone.
+      const occ = addZonedDays(base, n * stepDays, timeZone)
+      const t = occ.getTime()
+      if (t > hardEnd) break
+      if (t >= rs - DAY) {
+        out.push(makeOccurrence(ev, occ, durationMs, true, overrides, timeZone))
+      }
+      n++
+      guard++
     }
   }
 

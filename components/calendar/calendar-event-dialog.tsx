@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/athlete-calendar"
 import { CALENDAR_CATEGORIES } from "@/lib/validations/athlete-calendar"
 import { CATEGORY_META } from "@/lib/calendar/categories"
+import { instantToZonedInput } from "@/lib/calendar/timezone"
 import type { ActionState } from "@/lib/actions/types"
 import type { AthleteCalendarEvent } from "@/types/models"
 import { Button } from "@/components/ui/button"
@@ -26,15 +27,6 @@ import {
 
 const EMPTY: ActionState = { ok: false }
 
-/** ISO → value for <input type="datetime-local"> in local time. */
-function toLocalInput(iso: string | null): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  const off = d.getTimezoneOffset() * 60_000
-  return new Date(d.getTime() - off).toISOString().slice(0, 16)
-}
-
 function SaveButton() {
   const { pending } = useFormStatus()
   return <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
@@ -46,12 +38,14 @@ export function CalendarEventDialog({
   onOpenChange,
   event,
   defaultDate,
+  timeZone,
 }: {
   clientId: string
   open: boolean
   onOpenChange: (v: boolean) => void
   event: AthleteCalendarEvent | null
   defaultDate: string | null // yyyy-MM-dd for new events
+  timeZone: string
 }) {
   const router = useRouter()
   const [, startTx] = useTransition()
@@ -75,10 +69,10 @@ export function CalendarEventDialog({
   }, [state])
 
   const startDefault = event
-    ? toLocalInput(event.starts_at)
+    ? instantToZonedInput(event.starts_at, timeZone)
     : defaultDate
       ? `${defaultDate}T07:00`
-      : toLocalInput(new Date().toISOString())
+      : instantToZonedInput(new Date().toISOString(), timeZone)
 
   function runSimple(fn: () => Promise<ActionState>, okMsg: string) {
     startTx(async () => {
@@ -142,7 +136,7 @@ export function CalendarEventDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ends_at">End (optional)</Label>
-              <Input id="ends_at" name="ends_at" type="datetime-local" defaultValue={toLocalInput(event?.ends_at ?? null)} />
+              <Input id="ends_at" name="ends_at" type="datetime-local" defaultValue={instantToZonedInput(event?.ends_at ?? null, timeZone)} />
             </div>
           </div>
 

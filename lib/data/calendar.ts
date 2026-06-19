@@ -5,6 +5,8 @@ import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getBypassCalendar, getBypassClients } from "@/lib/dev-roster-store"
 import { mockAthleteCalendar } from "@/lib/data/athlete-calendar"
 import { athleteEventsToCalendar } from "@/lib/calendar/rollup"
+import { getOperatingTimeZone } from "@/lib/data/settings"
+import { DEFAULT_OPERATING_TZ } from "@/lib/calendar/timezone"
 import { fullName } from "@/lib/utils/format"
 import type { CalendarEvent } from "@/types/models"
 
@@ -19,10 +21,11 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
     const athlete = clients
       .filter((c) => c.status === "active")
       .flatMap((c) => mockAthleteCalendar(c.id))
-    const rolled = athleteEventsToCalendar(athlete, nameById, WINDOW_FROM(), WINDOW_TO())
+    const rolled = athleteEventsToCalendar(athlete, nameById, WINDOW_FROM(), WINDOW_TO(), [], DEFAULT_OPERATING_TZ)
     return [...getBypassCalendar(), ...rolled].sort((a, b) => a.date.localeCompare(b.date))
   }
 
+  const tz = await getOperatingTimeZone()
   const supabase = await createServerSupabase()
   const from = WINDOW_FROM().toISOString()
   const to = WINDOW_TO().toISOString()
@@ -55,7 +58,7 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
     (clients ?? []).map((c) => [c.id, fullName(c.first_name, c.last_name)])
   )
   const events: CalendarEvent[] = []
-  events.push(...athleteEventsToCalendar(athleteCal ?? [], nameById, WINDOW_FROM(), WINDOW_TO(), overrides ?? []))
+  events.push(...athleteEventsToCalendar(athleteCal ?? [], nameById, WINDOW_FROM(), WINDOW_TO(), overrides ?? [], tz))
 
   for (const s of sessions.data ?? []) {
     if (!s.scheduled_at) continue
