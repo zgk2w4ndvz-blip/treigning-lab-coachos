@@ -2,6 +2,8 @@ import { MessageSquare } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { getClientMessages } from "@/lib/data/client-messages"
+import { getOperatingTimeZone } from "@/lib/data/settings"
+import { dayKeyInZone } from "@/lib/calendar/timezone"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils/format"
@@ -19,15 +21,21 @@ const SOURCE_LABEL: Record<MessageSource, string> = {
   json: "JSON",
 }
 
-function dayKey(m: MessageIngest): string {
-  return (m.received_at ?? m.created_at).slice(0, 10)
+/** Group key = the message's local calendar day in the operating timezone
+ *  (NOT the UTC slice — an evening-Central message is 'tomorrow' in UTC). */
+function dayKey(m: MessageIngest, tz: string): string {
+  return dayKeyInZone(new Date(m.received_at ?? m.created_at), tz)
 }
 
-function time(value: string): string {
-  return new Date(value).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+function time(value: string, tz: string): string {
+  return new Date(value).toLocaleTimeString("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+  })
 }
 
-function Bubble({ m }: { m: MessageIngest }) {
+function Bubble({ m, tz }: { m: MessageIngest; tz: string }) {
   const outbound = m.direction === "outgoing"
   return (
     <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
@@ -45,7 +53,7 @@ function Bubble({ m }: { m: MessageIngest }) {
         <div className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
           <span>{outbound ? "Coach" : "Athlete"}</span>
           <span>·</span>
-          <span>{time(m.received_at ?? m.created_at)}</span>
+          <span>{time(m.received_at ?? m.created_at, tz)}</span>
           <span>·</span>
           <span>{SOURCE_LABEL[m.source]}</span>
         </div>
@@ -61,12 +69,15 @@ export default async function ClientMessagesPage({
 }) {
   await requireCoach()
   const { clientId } = await params
-  const messages = await getClientMessages(clientId)
+  const [messages, tz] = await Promise.all([
+    getClientMessages(clientId),
+    getOperatingTimeZone(),
+  ])
 
   // Group into day sections (messages are already oldest → newest).
   const days: { key: string; items: MessageIngest[] }[] = []
   for (const m of messages) {
-    const key = dayKey(m)
+    const key = dayKey(m, tz)
     const last = days[days.length - 1]
     if (last && last.key === key) last.items.push(m)
     else days.push({ key, items: [m] })
@@ -112,7 +123,7 @@ export default async function ClientMessagesPage({
               </div>
               <div className="space-y-2">
                 {day.items.map((m) => (
-                  <Bubble key={m.id} m={m} />
+                  <Bubble key={m.id} m={m} tz={tz} />
                 ))}
               </div>
             </section>
