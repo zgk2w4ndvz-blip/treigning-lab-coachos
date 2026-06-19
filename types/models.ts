@@ -82,6 +82,50 @@ export type MessageIngest = Tables<"message_ingest">
 export type SuggestedAction = Tables<"suggested_actions">
 export type Prescription = Tables<"prescriptions">
 export type LowBasePrescription = Tables<"low_base_prescriptions">
+export type WeightPlan = Tables<"weight_plans">
+export type WeightPlanTarget = Tables<"weight_plan_targets">
+
+// ---- Weight Planning (Phase 1B) -------------------------------------------
+
+/** Derived (computed, not stored) weight-plan summary metrics. */
+export interface WeightPlanSummary {
+  poundsRemaining: number | null
+  weeksRemaining: number | null
+  totalWeeks: number | null
+  poundsPerWeek: number | null
+  dailyCalorieDeficit: number | null
+  /** Direction inferred from current vs goal. */
+  direction: "cut" | "gain" | "maintain"
+  /** True when the planned rate exceeds a safe weekly threshold. */
+  aggressive: boolean
+}
+
+/** Nutrition targets derived from the plan + integrations. */
+export interface WeightPlanNutrition {
+  maintenanceCalories: number | null
+  dailyCalorieTarget: number | null
+  proteinTargetG: number | null
+  potassiumTargetMg: number | null
+  /** Where the maintenance baseline came from. */
+  basis: "nutrition_plan" | "bmr_estimate" | "unknown"
+}
+
+export interface WeightPlanData {
+  plan: WeightPlan | null
+  targets: WeightPlanTarget[]
+  summary: WeightPlanSummary | null
+  nutrition: WeightPlanNutrition | null
+  /** Latest actual weigh-in (weight_logs) for current-vs-target + chart overlay. */
+  latestWeight: WeightLog | null
+  /** Recent weigh-ins for the projection chart's "actual" series. */
+  recentWeights: WeightLog[]
+  /** Current Low Base prescription (display section 4). */
+  lowBase: LowBasePrescription | null
+  /** Active nutrition plan (baseline + display section 5). */
+  nutritionPlan: NutritionPlan | null
+  /** Linked / next competition, if any. */
+  competition: Competition | null
+}
 export type AthleteCalendarEvent = Tables<"athlete_calendar_events">
 export type AthleteCalendarEventOverride =
   Tables<"athlete_calendar_event_overrides">

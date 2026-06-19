@@ -609,6 +609,33 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "updated_at">
+      weight_plans: Table<{
+        id: string
+        coach_id: string
+        client_id: string
+        current_weight: number
+        goal_weight: number
+        competition_weight: number | null
+        start_date: string
+        target_date: string
+        competition_id: string | null
+        is_active: boolean
+        notes: string | null
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, Defaults | "is_active" | "updated_at">
+      weight_plan_targets: Table<{
+        id: string
+        plan_id: string
+        client_id: string
+        week_index: number
+        week_start: string
+        target_weight: number
+        calorie_target: number | null
+        protein_target_g: number | null
+        potassium_target_mg: number | null
+        created_at: Timestamp
+      }, Defaults>
       body_measurements: Table<{
         id: string
         client_id: string

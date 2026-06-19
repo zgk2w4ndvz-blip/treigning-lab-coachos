@@ -23,6 +23,7 @@ import {
   Activity,
   Ruler,
   Gauge,
+  Target,
   type LucideIcon,
 } from "lucide-react"
 
@@ -63,6 +64,7 @@ export const clientTabs: { label: string; segment: string; icon: LucideIcon }[] 
     { label: "Recovery", segment: "recovery", icon: HeartPulse },
     { label: "Stat Tracker", segment: "metabolic", icon: Gauge },
     { label: "Low Base", segment: "low-base", icon: Activity },
+    { label: "Weight Plan", segment: "weight-plan", icon: Target },
     { label: "Training", segment: "training", icon: Dumbbell },
     { label: "Competitions", segment: "competitions", icon: Trophy },
     { label: "Combat", segment: "combat", icon: Swords },
