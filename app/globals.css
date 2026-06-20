@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-oswald);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -117,6 +117,58 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ============================================================================
+   Treigning Lab visual system — performance-red accent + athletic headings.
+   Applied to both :root and .dark (the app is forced dark) so the brand red
+   drives primary CTAs, active nav, and focus rings. Overrides the neutral
+   primary/ring tokens above without touching any other token.
+   ============================================================================ */
+:root,
+.dark {
+  --primary: oklch(0.58 0.22 25); /* performance red */
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.58 0.22 25);
+  --sidebar-primary: oklch(0.58 0.22 25);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.58 0.22 25);
+
+  /* --- Phase A: elevation system (subtle premium / 3D depth) ---------------
+     Dark UIs read depth from a darker drop-shadow plus a faint light edge at
+     the top of the surface. These tokens drive Card, Button, popovers, etc. */
+  --shadow-card:
+    0 1px 2px 0 rgb(0 0 0 / 0.30),
+    0 3px 8px -2px rgb(0 0 0 / 0.32),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.05);
+  --shadow-card-hover:
+    0 2px 4px 0 rgb(0 0 0 / 0.32),
+    0 10px 24px -6px rgb(0 0 0 / 0.46),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.07);
+  --shadow-pop:
+    0 12px 32px -8px rgb(0 0 0 / 0.55),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+  --shadow-btn:
+    0 1px 2px 0 rgb(0 0 0 / 0.40),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.12);
+  --shadow-btn-hover:
+    0 2px 6px -1px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.16);
+  --shadow-btn-primary:
+    0 1px 2px 0 rgb(0 0 0 / 0.45),
+    0 4px 14px -4px oklch(0.58 0.22 25 / 0.45),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.20);
+  --shadow-btn-primary-hover:
+    0 2px 4px 0 rgb(0 0 0 / 0.45),
+    0 6px 20px -4px oklch(0.58 0.22 25 / 0.60),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.24);
+
+  /* Raised surface fill: a hair lighter at the top edge than the base card. */
+  --surface-card: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--card), white 3.5%) 0%,
+    var(--card) 55%
+  );
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -124,7 +176,27 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Faint top-down vignette so raised cards read against the field. A fixed,
+     pointer-transparent pseudo-element (z-index below content) keeps it cheap
+     on long pages and reliable on mobile, unlike background-attachment:fixed. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      120% 80% at 50% -10%,
+      color-mix(in oklch, var(--background), white 4%) 0%,
+      transparent 60%
+    );
+  }
   html {
     @apply font-sans;
+  }
+  /* Bold athletic display headings. */
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
   }
 }

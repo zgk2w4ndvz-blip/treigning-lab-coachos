@@ -3,7 +3,7 @@ import { Users, Scale, Dumbbell, AlertTriangle, Flag } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { getDailyAgenda, getAgendaDashboard } from "@/lib/data/agenda"
-import { PageHeader } from "@/components/shared/page-header"
+import { PageHeader, SectionHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { AgendaBoard } from "@/components/coach/agenda-board"
@@ -51,7 +51,7 @@ export default async function AgendaPage() {
       {/* Phase 2C — normalized command center (Today / Attention / Upcoming) */}
       <AgendaDashboardView dashboard={dashboard} />
 
-      <h2 className="text-base font-semibold">By athlete</h2>
+      <SectionHeader title="By athlete" count={agendas.length} />
       {agendas.length === 0 ? (
         <EmptyState
           icon={Users}

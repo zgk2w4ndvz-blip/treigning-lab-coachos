@@ -2,7 +2,7 @@ import { Inbox, ShieldAlert, UserX, CheckCheck } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { getInbox } from "@/lib/data/inbox"
-import { PageHeader } from "@/components/shared/page-header"
+import { PageHeader, SectionHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { MessageImport } from "@/components/coach/message-import"
 import { InboxQueue } from "@/components/coach/inbox-queue"
@@ -26,6 +26,8 @@ export default async function InboxPage() {
       </div>
 
       <MessageImport />
+
+      <SectionHeader title="Review queue" count={stats.pending} />
       <InboxQueue items={items} />
     </main>
   )
