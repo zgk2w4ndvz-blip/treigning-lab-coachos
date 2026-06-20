@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, Users, AlertTriangle } from "lucide-react"
+import { Search, Users, AlertTriangle, ArrowDownUp } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -34,15 +34,30 @@ import {
 import type { ClientListItem, ClientStatus } from "@/types/models"
 
 type StatusFilter = ClientStatus | "all"
+type SortKey = "name_asc" | "name_desc" | "modified_desc" | "modified_asc"
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "name_asc", label: "Name A → Z" },
+  { value: "name_desc", label: "Name Z → A" },
+  { value: "modified_desc", label: "Recently modified" },
+  { value: "modified_asc", label: "Oldest modified" },
+]
+
+/** Epoch millis for an updated_at; missing/invalid sorts to 0 (last). */
+function modifiedTime(item: ClientListItem): number {
+  const t = item.client.updated_at ? Date.parse(item.client.updated_at) : NaN
+  return Number.isNaN(t) ? 0 : t
+}
 
 export function ClientRoster({ items }: { items: ClientListItem[] }) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
+  const [sort, setSort] = useState<SortKey>("name_asc")
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return items.filter(({ client }) => {
+    const matched = items.filter(({ client }) => {
       if (status !== "all" && client.status !== status) return false
       if (!q) return true
       const haystack = [
@@ -57,7 +72,31 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
         .toLowerCase()
       return haystack.includes(q)
     })
-  }, [items, query, status])
+
+    // All clients are loaded up front, so sorting is client-side. Name compare
+    // is locale-aware and case-insensitive; "modified" uses clients.updated_at.
+    const byName = (a: ClientListItem, b: ClientListItem) =>
+      fullName(a.client.first_name, a.client.last_name).localeCompare(
+        fullName(b.client.first_name, b.client.last_name),
+        undefined,
+        { sensitivity: "base" }
+      )
+    const sorted = [...matched]
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "name_desc":
+          return byName(b, a)
+        case "modified_desc":
+          return modifiedTime(b) - modifiedTime(a)
+        case "modified_asc":
+          return modifiedTime(a) - modifiedTime(b)
+        case "name_asc":
+        default:
+          return byName(a, b)
+      }
+    })
+    return sorted
+  }, [items, query, status, sort])
 
   return (
     <div className="space-y-4">
@@ -81,6 +120,19 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
             <SelectItem value="prospect">Prospect</SelectItem>
             <SelectItem value="inactive">Inactive</SelectItem>
             <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+          <SelectTrigger className="w-full sm:w-48" aria-label="Sort clients">
+            <ArrowDownUp className="text-muted-foreground size-4" />
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
