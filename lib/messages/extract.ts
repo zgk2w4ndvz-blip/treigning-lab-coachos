@@ -41,9 +41,20 @@ const COMPETITION =
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 
-/** Pull morning/evening/general weight readings, tagged body vs competition. */
+/** Pull morning/evening/general weight readings, tagged body vs competition.
+ *
+ *  A message qualifies as "about weight" in two ways:
+ *   1. it contains an explicit weight keyword/unit (WEIGHT_CONTEXT) — then every
+ *      plausible in-range number is read as a weight (existing behavior), or
+ *   2. an individual number carries its own weight signal — a unit (172 lb) or a
+ *      time-of-day cue (172 for bed, 169.8 in the morning, 165 am, 168 pm).
+ *
+ *  Case 2 is what lets athletes log AM/PM and multiple weights without ever
+ *  typing "weight" — e.g. "172 for bed. 169.8 in the morning" yields two
+ *  entries — while stray numbers (reps, times, prices) in non-weight messages
+ *  are still ignored because they have neither a unit nor a time cue. */
 export function extractWeights(text: string): WeightEntry[] {
-  if (!WEIGHT_CONTEXT.test(text)) return []
+  const hasWeightKeyword = WEIGHT_CONTEXT.test(text)
   const lower = text.toLowerCase()
   const entries: WeightEntry[] = []
   const seen = new Set<string>()
@@ -54,12 +65,17 @@ export function extractWeights(text: string): WeightEntry[] {
   while ((m = numRe.exec(text))) {
     const val = parseFloat(m[1])
     if (val < 50 || val > 500) continue
+    const hasUnit = !!m[2]
     const before = lower.slice(Math.max(0, m.index - 28), m.index)
     const after = lower.slice(m.index + m[0].length, m.index + m[0].length + 28)
     const win = `${before} ${after}`
     let label: TimeOfDay = "general"
     if (MORNING.test(win)) label = "morning"
     else if (EVENING.test(win)) label = "evening"
+    // Without a message-level weight keyword, only accept numbers that carry
+    // their own weight signal (a unit or a time-of-day cue). This keeps reps,
+    // clock times, and prices in ordinary messages from being read as weights.
+    if (!hasWeightKeyword && !hasUnit && label === "general") continue
     // Competition cues reliably precede the number ("official weigh-in 124",
     // "made weight at 125") — checking only the before-window avoids a later
     // clause bleeding its context onto an earlier body-weight number.

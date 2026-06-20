@@ -29,6 +29,14 @@ const cases: [string, boolean, boolean][] = [
   ["see you at 8:30, paid 250", true, false], // sentence with stray numbers
   ["2026", true, false], // out of range (year)
   ["305 1234", true, false], // two numbers / phone-ish
+  // --- multi-weight / time-of-day without a "weight" keyword (regression) ---
+  ["172 for bed. 169.8 in the morning", true, true], // the Julian Ramirez case
+  ["165 last night, 171 this morning", true, true], // last night + this morning
+  ["168 am 170 pm", true, true], // AM/PM references
+  ["169.8 in the morning", true, true], // single time-tagged, no keyword
+  // guards: time word present but numbers are clearly not weights
+  ["leaving in the morning, running 5 min late", true, false], // no in-range number near a cue
+  ["t-bar rows 3x10 at 135, 140 this set", true, false], // reps/loads, not a body weight cue
 ]
 
 let passed = 0
@@ -52,7 +60,20 @@ assert.equal((evening!.details as unknown as WeightDetails).entries[0].label, "e
 const generic = weightSuggestion("173.4", true)
 assert.equal((generic!.details as unknown as WeightDetails).entries[0].label, "general")
 
-console.log(`✓ extract bare-weight: ${passed} cases + 3 time-of-day assertions passed`)
+// Multiple time-tagged weights in one message, no "weight" keyword (the exact
+// production message that produced 0 suggestions before this fix).
+const multi = weightSuggestion("172 for bed. 169.8 in the morning", true)
+const multiEntries = (multi!.details as unknown as WeightDetails).entries
+assert.equal(multiEntries.length, 2, "expected two weight entries")
+assert.deepEqual(
+  multiEntries.map((e) => ({ label: e.label, weightLbs: e.weightLbs })),
+  [
+    { label: "evening", weightLbs: 172 },
+    { label: "morning", weightLbs: 169.8 },
+  ]
+)
+
+console.log(`✓ extract bare-weight: ${passed} cases + multi-weight + 3 time-of-day assertions passed`)
 
 // ---- Body composition extraction -----------------------------------------
 assert.deepEqual(
