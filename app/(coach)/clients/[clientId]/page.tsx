@@ -12,7 +12,8 @@ import {
 
 import { getClientSnapshot } from "@/lib/data/clients"
 import { getClientComputedAlerts } from "@/lib/data/alerts"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { OverviewCard } from "@/components/client/overview-card"
 import { ComplianceBar } from "@/components/shared/compliance-bar"
 import { SeverityBadge } from "@/components/shared/badges"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -68,12 +69,12 @@ export default async function ClientOverviewPage({
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      {/* Body composition */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <Scale className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">Body Composition</CardTitle>
-        </CardHeader>
+      {/* Body composition → Body Comp (weight) tab */}
+      <OverviewCard
+        href={`/clients/${clientId}/weight`}
+        icon={Scale}
+        title="Body Composition"
+      >
         <CardContent className="space-y-2">
           <p className="text-3xl font-bold tabular-nums">
             {formatWeight(latestWeight?.weight_lbs ?? null)}
@@ -101,14 +102,14 @@ export default async function ClientOverviewPage({
             </dl>
           ) : null}
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Hydration */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <Droplets className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">Hydration (today)</CardTitle>
-        </CardHeader>
+      {/* Hydration today → Hydration tab */}
+      <OverviewCard
+        href={`/clients/${clientId}/hydration`}
+        icon={Droplets}
+        title="Hydration (today)"
+      >
         <CardContent className="space-y-2">
           {hydrationToday ? (
             <>
@@ -133,14 +134,14 @@ export default async function ClientOverviewPage({
             <p className="text-muted-foreground text-sm">Nothing logged today</p>
           )}
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Recovery */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <HeartPulse className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">Recovery</CardTitle>
-        </CardHeader>
+      {/* Recovery → Recovery tab */}
+      <OverviewCard
+        href={`/clients/${clientId}/recovery`}
+        icon={HeartPulse}
+        title="Recovery"
+      >
         <CardContent className="space-y-1 text-sm">
           {latestRecovery ? (
             <dl className="space-y-1">
@@ -153,14 +154,14 @@ export default async function ClientOverviewPage({
             <p className="text-muted-foreground">No recovery logs yet</p>
           )}
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Compliance */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <Activity className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">7-day compliance</CardTitle>
-        </CardHeader>
+      {/* 7-day compliance → Nutrition tab (no dedicated compliance page) */}
+      <OverviewCard
+        href={`/clients/${clientId}/nutrition`}
+        icon={Activity}
+        title="7-day compliance"
+      >
         <CardContent className="space-y-2">
           <p className="text-3xl font-bold tabular-nums">{complianceScore}%</p>
           <ComplianceBar score={complianceScore} showValue={false} />
@@ -168,14 +169,14 @@ export default async function ClientOverviewPage({
             Across weight, nutrition, hydration &amp; recovery logging.
           </p>
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Next competition */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <Trophy className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">Next competition</CardTitle>
-        </CardHeader>
+      {/* Next competition → Competitions tab */}
+      <OverviewCard
+        href={`/clients/${clientId}/competitions`}
+        icon={Trophy}
+        title="Next competition"
+      >
         <CardContent className="space-y-1">
           {nextCompetition ? (
             <>
@@ -194,14 +195,14 @@ export default async function ClientOverviewPage({
             <p className="text-muted-foreground text-sm">None scheduled</p>
           )}
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Active plans */}
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <Utensils className="text-muted-foreground size-4" />
-          <CardTitle className="text-base">Active plans</CardTitle>
-        </CardHeader>
+      {/* Active plans → Nutrition tab (primary plan; single destination) */}
+      <OverviewCard
+        href={`/clients/${clientId}/nutrition`}
+        icon={Utensils}
+        title="Active plans"
+      >
         <CardContent className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <Utensils className="text-muted-foreground size-3.5" />
@@ -222,13 +223,15 @@ export default async function ClientOverviewPage({
             <span>See supplements tab</span>
           </div>
         </CardContent>
-      </Card>
+      </OverviewCard>
 
-      {/* Open alerts (full width) */}
-      <Card className="lg:col-span-3">
-        <CardHeader>
-          <CardTitle className="text-base">Open alerts</CardTitle>
-        </CardHeader>
+      {/* Open alerts (full width) → Inbox (no per-client alerts view exists) */}
+      <OverviewCard
+        href="/inbox"
+        title="Open alerts"
+        ariaLabel="View open alerts in the inbox"
+        className="lg:col-span-3"
+      >
         <CardContent>
           {openAlerts.length === 0 ? (
             <EmptyState
@@ -257,7 +260,7 @@ export default async function ClientOverviewPage({
             </ul>
           )}
         </CardContent>
-      </Card>
+      </OverviewCard>
     </div>
   )
 }
