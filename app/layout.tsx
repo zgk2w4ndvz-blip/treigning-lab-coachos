@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Geist, Geist_Mono, Oswald } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
 import { QueryProvider } from "@/providers/query-provider"
@@ -17,6 +17,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
+// Athletic condensed display font for headings (Treigning Lab visual system).
+const oswald = Oswald({
+  variable: "--font-oswald",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+})
+
 export const metadata: Metadata = {
   title: "Treigning Lab CoachOS",
   description:
@@ -31,7 +38,7 @@ export default function RootLayout({
   const tree = (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${oswald.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="bg-background text-foreground min-h-full flex flex-col">

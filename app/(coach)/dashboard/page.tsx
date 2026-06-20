@@ -8,7 +8,7 @@ import { listClientsForRoster } from "@/lib/data/clients"
 import { listActiveCutsForBoard } from "@/lib/data/combat"
 import { getCalendarEvents } from "@/lib/data/calendar"
 import { cn } from "@/lib/utils"
-import { PageHeader } from "@/components/shared/page-header"
+import { PageHeader, SectionHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { AlertFeed } from "@/components/coach/alert-feed"
 import { DashboardTasks } from "@/components/coach/dashboard-tasks"
@@ -79,7 +79,8 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Phase 2C — attention strip linking into the Daily Agenda command center */}
+      {/* Attention required — links into the Daily Agenda command center */}
+      <SectionHeader title="Attention required" />
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/agenda" className="text-muted-foreground inline-flex items-center gap-1.5 text-sm font-medium">
           <AlertTriangle className="size-4" /> Attention
@@ -102,13 +103,16 @@ export default async function DashboardPage() {
         ))}
       </div>
 
+      <SectionHeader title="Upcoming 7 days" />
       <RosterWeek events={calendar} />
 
+      <SectionHeader title="Tasks & athlete alerts" />
       <div className="grid gap-4 lg:grid-cols-2">
         <DashboardTasks tasks={summary.todaysTasks} />
         <AlertFeed alerts={summary.recentAlerts} />
       </div>
 
+      <SectionHeader title="Sport" />
       <div className="grid gap-4 lg:grid-cols-2">
         <CombatWatch items={cuts} />
         <UpcomingCompetitions roster={roster} />
