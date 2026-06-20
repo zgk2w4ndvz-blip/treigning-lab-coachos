@@ -13,24 +13,25 @@ import { ScheduleBoard } from "@/components/schedule/schedule-board"
 import { getBypassClients } from "@/lib/dev-roster-store"
 import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { createServerSupabase } from "@/lib/supabase/server"
-import { fullName } from "@/lib/utils/format"
+import { rosterName, compareByLastFirst } from "@/lib/utils/format"
 
 async function getAthletes(): Promise<{ id: string; name: string }[]> {
+  // Athlete picker / filter dropdowns — "Last, First", ordered by last name.
   if (DEV_AUTH_BYPASS) {
-    return getBypassClients().map((c) => ({
-      id: c.id,
-      name: fullName(c.first_name, c.last_name),
-    }))
+    return [...getBypassClients()]
+      .sort(compareByLastFirst)
+      .map((c) => ({ id: c.id, name: rosterName(c.first_name, c.last_name) }))
   }
   const supabase = await createServerSupabase()
   const { data } = await supabase
     .from("clients")
     .select("id, first_name, last_name")
     .eq("status", "active")
+    .order("last_name")
     .order("first_name")
   return (data ?? []).map((c) => ({
     id: c.id,
-    name: fullName(c.first_name, c.last_name),
+    name: rosterName(c.first_name, c.last_name),
   }))
 }
 

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DeleteClientButton } from "@/components/coach/delete-client-button"
-import { initials, fullName, formatDate } from "@/lib/utils/format"
+import { initials, fullName, rosterName, formatDate } from "@/lib/utils/format"
 
 export default async function ManageRosterPage() {
   await requireCoach()
@@ -109,6 +109,7 @@ export default async function ManageRosterPage() {
             </TableHeader>
             <TableBody>
               {clients.map((a) => {
+                // Initials stay first+last ("JV"); the list label is "Last, First".
                 const name = fullName(a.firstName, a.lastName)
                 return (
                   <TableRow key={a.id}>
@@ -119,7 +120,7 @@ export default async function ManageRosterPage() {
                         </Avatar>
                         <div className="min-w-0">
                           <Link href={`/clients/${a.id}`} className="block truncate font-medium hover:underline">
-                            {name}
+                            {rosterName(a.firstName, a.lastName)}
                           </Link>
                           {a.email ? (
                             <p className="text-muted-foreground truncate text-xs">{a.email}</p>
