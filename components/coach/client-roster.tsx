@@ -27,6 +27,8 @@ import { ComplianceBar } from "@/components/shared/compliance-bar"
 import { EmptyState } from "@/components/shared/empty-state"
 import {
   fullName,
+  rosterName,
+  compareByLastFirst,
   initials,
   formatDateShort,
   relativeDays,
@@ -34,13 +36,13 @@ import {
 import type { ClientListItem, ClientStatus } from "@/types/models"
 
 type StatusFilter = ClientStatus | "all"
-type SortKey = "name_asc" | "name_desc" | "modified_desc" | "modified_asc"
+type SortKey = "last_asc" | "last_desc" | "modified_desc" | "modified_asc"
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "name_asc", label: "Name A → Z" },
-  { value: "name_desc", label: "Name Z → A" },
-  { value: "modified_desc", label: "Recently modified" },
-  { value: "modified_asc", label: "Oldest modified" },
+  { value: "last_asc", label: "Last Name A → Z" },
+  { value: "last_desc", label: "Last Name Z → A" },
+  { value: "modified_desc", label: "Recently Modified" },
+  { value: "modified_asc", label: "Oldest Modified" },
 ]
 
 /** Epoch millis for an updated_at; missing/invalid sorts to 0 (last). */
@@ -53,16 +55,20 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
-  const [sort, setSort] = useState<SortKey>("name_asc")
+  const [sort, setSort] = useState<SortKey>("last_asc")
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const matched = items.filter(({ client }) => {
       if (status !== "all" && client.status !== status) return false
       if (!q) return true
+      // Searchable text covers both name orders so "Julian", "Ramirez",
+      // "Julian Ramirez", and "Ramirez, Julian" all match.
       const haystack = [
         client.first_name,
         client.last_name,
+        fullName(client.first_name, client.last_name),
+        rosterName(client.first_name, client.last_name),
         client.sport,
         client.discipline,
         client.email,
@@ -74,25 +80,20 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
     })
 
     // All clients are loaded up front, so sorting is client-side. Name compare
-    // is locale-aware and case-insensitive; "modified" uses clients.updated_at.
-    const byName = (a: ClientListItem, b: ClientListItem) =>
-      fullName(a.client.first_name, a.client.last_name).localeCompare(
-        fullName(b.client.first_name, b.client.last_name),
-        undefined,
-        { sensitivity: "base" }
-      )
+    // is by last name then first (locale-aware, case-insensitive); "modified"
+    // uses clients.updated_at.
     const sorted = [...matched]
     sorted.sort((a, b) => {
       switch (sort) {
-        case "name_desc":
-          return byName(b, a)
+        case "last_desc":
+          return -compareByLastFirst(a.client, b.client)
         case "modified_desc":
           return modifiedTime(b) - modifiedTime(a)
         case "modified_asc":
           return modifiedTime(a) - modifiedTime(b)
-        case "name_asc":
+        case "last_asc":
         default:
-          return byName(a, b)
+          return compareByLastFirst(a.client, b.client)
       }
     })
     return sorted
@@ -182,7 +183,7 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
                           className="block truncate font-medium hover:underline"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {fullName(client.first_name, client.last_name)}
+                          {rosterName(client.first_name, client.last_name)}
                         </Link>
                         {client.email ? (
                           <p className="text-muted-foreground truncate text-xs">
