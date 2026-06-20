@@ -150,3 +150,9 @@ export function addZonedDays(instant: Date, days: number, tz: string): Date {
 export function zonedEndOfDay(localDate: string, tz: string): Date | null {
   return wallClockToUtc(`${localDate.slice(0, 10)}T23:59:59`, tz)
 }
+
+/** The civil day before a yyyy-MM-dd date (date-only arithmetic, TZ-agnostic). */
+export function previousLocalDay(localDate: string): string {
+  const t = Date.parse(`${localDate.slice(0, 10)}T00:00:00Z`) - 86_400_000
+  return new Date(t).toISOString().slice(0, 10)
+}

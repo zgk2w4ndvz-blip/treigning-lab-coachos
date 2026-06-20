@@ -595,9 +595,16 @@ export interface Database {
         status: CalendarStatus
         completed_at: Timestamp | null
         notes: string | null
+        is_cancelled: boolean
+        title: string | null
+        description: string | null
+        category: CalendarCategory | null
+        starts_at: Timestamp | null
+        ends_at: Timestamp | null
+        all_day: boolean | null
         created_at: Timestamp
         updated_at: Timestamp
-      }, Defaults | "status" | "updated_at">
+      }, Defaults | "status" | "is_cancelled" | "updated_at">
       low_base_prescriptions: Table<{
         id: string
         coach_id: string
