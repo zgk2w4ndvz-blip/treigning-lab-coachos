@@ -32,12 +32,15 @@ function SaveButton() {
   return <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
 }
 
+type EditScope = "this" | "future" | "series"
+
 export function CalendarEventDialog({
   clientId,
   open,
   onOpenChange,
   event,
   defaultDate,
+  occurrenceDate,
   timeZone,
 }: {
   clientId: string
@@ -45,17 +48,27 @@ export function CalendarEventDialog({
   onOpenChange: (v: boolean) => void
   event: AthleteCalendarEvent | null
   defaultDate: string | null // yyyy-MM-dd for new events
+  occurrenceDate: string | null // yyyy-MM-dd of the clicked occurrence (edit)
   timeZone: string
 }) {
   const router = useRouter()
   const [, startTx] = useTransition()
+  const recurring = !!event && event.recurrence !== "none"
+  // Explicit scope is always required for recurring events (default: this only).
+  const [scope, setScope] = useState<EditScope>("this")
   const action = event
     ? updateCalendarEventAction.bind(null, clientId, event.id)
     : createCalendarEventAction.bind(null, clientId)
   const [state, formAction] = useActionState<ActionState, FormData>(action, EMPTY)
   // Remount the form when switching between events so defaults refresh.
   const [formKey, setFormKey] = useState(0)
-  useEffect(() => setFormKey((k) => k + 1), [event?.id, open])
+  useEffect(() => {
+    setFormKey((k) => k + 1)
+    setScope("this")
+  }, [event?.id, open])
+
+  // Non-recurring events have no scope choice → always "series".
+  const effectiveScope: EditScope = recurring ? scope : "series"
 
   useEffect(() => {
     if (state.ok) {
@@ -90,6 +103,32 @@ export function CalendarEventDialog({
         </DialogHeader>
 
         <form key={formKey} action={formAction} className="grid gap-3">
+          <input type="hidden" name="scope" value={effectiveScope} />
+          <input type="hidden" name="occurrence_date" value={occurrenceDate ?? ""} />
+
+          {recurring ? (
+            <fieldset className="rounded-md border p-2">
+              <legend className="text-muted-foreground px-1 text-[11px] font-medium">Apply to</legend>
+              <div className="flex flex-col gap-1 text-sm">
+                {(
+                  [
+                    ["this", "This occurrence only"],
+                    ["future", "This and future occurrences"],
+                    ["series", "Entire series"],
+                  ] as [EditScope, string][]
+                ).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2">
+                    <input
+                      type="radio" name="scope_radio" value={value}
+                      checked={scope === value} onChange={() => setScope(value)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+
           <div className="grid gap-1.5">
             <Label htmlFor="title">Title</Label>
             <Input id="title" name="title" defaultValue={event?.title ?? ""} placeholder="e.g. Lower body strength" autoFocus />
@@ -178,7 +217,15 @@ export function CalendarEventDialog({
                 <Button type="button" variant="outline" size="sm"
                   className="text-red-600 dark:text-red-400"
                   onClick={() => {
-                    if (confirm("Delete this event?")) runSimple(() => deleteCalendarEventAction(clientId, event.id), "Deleted")
+                    const msg = recurring
+                      ? `Delete (${effectiveScope === "this" ? "this occurrence only" : effectiveScope === "future" ? "this and future occurrences" : "entire series"})?`
+                      : "Delete this event?"
+                    if (confirm(msg)) {
+                      runSimple(
+                        () => deleteCalendarEventAction(clientId, event.id, effectiveScope, occurrenceDate ?? undefined),
+                        "Deleted"
+                      )
+                    }
                   }}>
                   <Trash2 className="size-4" /> Delete
                 </Button>

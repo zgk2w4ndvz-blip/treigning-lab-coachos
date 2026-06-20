@@ -26,22 +26,54 @@ export function overrideKey(eventId: string, date: string): string {
   return `${eventId}@${date}`
 }
 
+/**
+ * Merge an override's non-null FIELD values over the base event (the effective
+ * event for one occurrence). Null = inherit from base. Status/notes are NOT
+ * field overrides — they're resolved separately. Pure; exported for tests.
+ */
+export function applyOverride(
+  ev: AthleteCalendarEvent,
+  ov: AthleteCalendarEventOverride
+): AthleteCalendarEvent {
+  return {
+    ...ev,
+    title: ov.title ?? ev.title,
+    description: ov.description ?? ev.description,
+    category: ov.category ?? ev.category,
+    all_day: ov.all_day ?? ev.all_day,
+    starts_at: ov.starts_at ?? ev.starts_at,
+    ends_at: ov.ends_at ?? ev.ends_at,
+  }
+}
+
+/** Build one occurrence, applying any override. Returns null if cancelled. */
 function makeOccurrence(
   ev: AthleteCalendarEvent,
-  start: Date,
+  slotStart: Date,
   durationMs: number | null,
   recurring: boolean,
   overrides: Map<string, AthleteCalendarEventOverride>,
   tz: string
-): CalendarOccurrence {
-  const date = dayKeyInZone(start, tz)
-  const override = overrides.get(overrideKey(ev.id, date)) ?? null
+): CalendarOccurrence | null {
+  // Override is keyed by the ORIGINAL slot day (stable RECURRENCE-ID), even if
+  // the occurrence is rescheduled to another time/day.
+  const slotDate = dayKeyInZone(slotStart, tz)
+  const override = overrides.get(overrideKey(ev.id, slotDate)) ?? null
+  if (override?.is_cancelled) return null // EXDATE — drop this occurrence
+
+  const event = override ? applyOverride(ev, override) : ev
+  // A rescheduled occurrence uses the override's instant; otherwise the slot.
+  const start = override?.starts_at ? new Date(override.starts_at) : slotStart
+  let end: string | null = null
+  if (override?.ends_at) end = new Date(override.ends_at).toISOString()
+  else if (durationMs != null) end = new Date(start.getTime() + durationMs).toISOString()
+
   return {
-    key: recurring ? `${ev.id}@${date}` : ev.id,
-    event: ev,
-    date,
+    key: recurring ? `${ev.id}@${slotDate}` : ev.id,
+    event,
+    date: dayKeyInZone(start, tz), // grouping day follows any reschedule
     start: start.toISOString(),
-    end: durationMs != null ? new Date(start.getTime() + durationMs).toISOString() : null,
+    end,
     status: override?.status ?? ev.status,
     override,
   }
@@ -73,7 +105,8 @@ export function expandOccurrences(
     if (ev.recurrence === "none") {
       const t = base.getTime()
       if (t >= rs - DAY && t <= re) {
-        out.push(makeOccurrence(ev, base, durationMs, false, overrides, timeZone))
+        const occ = makeOccurrence(ev, base, durationMs, false, overrides, timeZone)
+        if (occ) out.push(occ)
       }
       continue
     }
@@ -96,7 +129,8 @@ export function expandOccurrences(
       const t = occ.getTime()
       if (t > hardEnd) break
       if (t >= rs - DAY) {
-        out.push(makeOccurrence(ev, occ, durationMs, true, overrides, timeZone))
+        const made = makeOccurrence(ev, occ, durationMs, true, overrides, timeZone)
+        if (made) out.push(made)
       }
       n++
       guard++

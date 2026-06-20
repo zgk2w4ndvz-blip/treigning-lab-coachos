@@ -75,7 +75,7 @@ export function AthleteCalendar({
   const [, startTx] = useTransition()
   const [view, setView] = useState<View>("month")
   const [cursor, setCursor] = useState(() => startOfDay(new Date()))
-  const [dialog, setDialog] = useState<{ open: boolean; event: AthleteCalendarEvent | null; date: string | null }>({ open: false, event: null, date: null })
+  const [dialog, setDialog] = useState<{ open: boolean; event: AthleteCalendarEvent | null; date: string | null; occurrenceDate: string | null }>({ open: false, event: null, date: null, occurrenceDate: null })
 
   const byDate = useMemo(() => {
     const [rs, re] = rangeFor(view, cursor)
@@ -88,8 +88,11 @@ export function AthleteCalendar({
     return map
   }, [events, overrides, view, cursor, timeZone])
 
-  const openNew = (date: string | null) => setDialog({ open: true, event: null, date })
-  const openEdit = (ev: AthleteCalendarEvent) => setDialog({ open: true, event: ev, date: null })
+  const openNew = (date: string | null) => setDialog({ open: true, event: null, date, occurrenceDate: null })
+  // Edit opens with the clicked occurrence's effective event + its slot date, so
+  // scoped edits ("this occurrence" / "this and future") know which day.
+  const openEdit = (occ: CalendarOccurrence) =>
+    setDialog({ open: true, event: occ.event, date: null, occurrenceDate: occ.date })
 
   const setStatus = (occ: CalendarOccurrence, status: CalendarStatus) =>
     startTx(async () => {
@@ -148,6 +151,7 @@ export function AthleteCalendar({
         onOpenChange={(v) => setDialog((s) => ({ ...s, open: v }))}
         event={dialog.event}
         defaultDate={dialog.date}
+        occurrenceDate={dialog.occurrenceDate}
         timeZone={timeZone}
       />
     </div>
@@ -185,7 +189,7 @@ function Chip({ occ, timeZone, onEdit, onStatus, onReset }: ChipProps) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenuItem onClick={() => onEdit(occ.event)}>Edit details…</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit(occ)}>Edit details…</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onStatus(occ, "completed")}><Check className="size-4" /> Mark complete</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onStatus(occ, "skipped")}><MinusCircle className="size-4" /> Mark skipped</DropdownMenuItem>
@@ -204,7 +208,7 @@ function Chip({ occ, timeZone, onEdit, onStatus, onReset }: ChipProps) {
 type ChipProps = {
   occ: CalendarOccurrence
   timeZone: string
-  onEdit: (e: AthleteCalendarEvent) => void
+  onEdit: (occ: CalendarOccurrence) => void
   onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
   onReset: (occ: CalendarOccurrence) => void
 }
@@ -214,7 +218,7 @@ type ViewProps = {
   byDate: Map<string, CalendarOccurrence[]>
   timeZone: string
   onAdd: (date: string | null) => void
-  onEdit: (e: AthleteCalendarEvent) => void
+  onEdit: (occ: CalendarOccurrence) => void
   onStatus: (occ: CalendarOccurrence, status: CalendarStatus) => void
   onReset: (occ: CalendarOccurrence) => void
 }
