@@ -608,6 +608,11 @@ export interface ReviewQueueItem {
   messageSnippet: string
   receivedAt: string | null
   createdAt: string
+  /** Source message identifiers — used to group a message's suggested actions
+   *  into one card. Optional so mock/dev items can omit them (the grouper falls
+   *  back to a composite of the message's natural fields). */
+  messageId?: string | null
+  sourceMessageId?: string | null
   /** Structured payload for typed suggestions (e.g. weight-log entries). */
   details?: Record<string, unknown> | null
 }
