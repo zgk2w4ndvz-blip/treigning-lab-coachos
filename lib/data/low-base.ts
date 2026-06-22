@@ -22,6 +22,9 @@ export async function getLowBasePrescription(
       frequency_per_week: s.frequency_per_week,
       minutes_per_session: s.minutes_per_session,
       notes: s.notes,
+      start_date: s.start_date ?? null,
+      end_date: s.end_date ?? null,
+      schedule: (s.schedule ?? []) as unknown as LowBasePrescription["schedule"],
       created_at: s.created_at,
       updated_at: s.updated_at,
     }

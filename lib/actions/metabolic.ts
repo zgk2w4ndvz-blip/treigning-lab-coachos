@@ -163,6 +163,9 @@ export async function pushMepToLowBaseAction(
         frequency_per_week: prev?.frequency_per_week ?? DEFAULT_FREQUENCY_PER_WEEK,
         minutes_per_session: prev?.minutes_per_session ?? DEFAULT_MINUTES_PER_SESSION,
         notes: prev?.notes ?? null,
+        start_date: prev?.start_date ?? null,
+        end_date: prev?.end_date ?? null,
+        schedule: prev?.schedule ?? [],
       })
     } else {
       const coach = await requireCoach()

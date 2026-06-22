@@ -82,6 +82,13 @@ export type MessageIngest = Tables<"message_ingest">
 export type SuggestedAction = Tables<"suggested_actions">
 export type Prescription = Tables<"prescriptions">
 export type LowBasePrescription = Tables<"low_base_prescriptions">
+/** One weekly Low Base session slot stored in low_base_prescriptions.schedule. */
+export interface LowBaseSlot {
+  /** 0 = Sunday … 6 = Saturday. */
+  day_of_week: number
+  /** Local wall-clock start time in the operating timezone, "HH:MM" (24h). */
+  time: string
+}
 export type WeightPlan = Tables<"weight_plans">
 export type WeightPlanTarget = Tables<"weight_plan_targets">
 
