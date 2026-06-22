@@ -18,6 +18,32 @@
 
 import { previousLocalDay } from "@/lib/calendar/timezone"
 
+/**
+ * Linkage tag stored in athlete_calendar_events.details. Low Base events are
+ * matched by `details.source` + `details.low_base_prescription_id` — NOT by the
+ * athlete_calendar_events.prescription_id column, which FK-references the
+ * separate `prescriptions` table. Managed events keep prescription_id = null.
+ */
+export const LOW_BASE_SOURCE = "low_base_schedule"
+
+export interface ManagedEventDetails {
+  source: string
+  low_base_prescription_id: string
+  slot_key: string
+  day_of_week: number
+  time: string
+  mep_bpm: number | null
+  minutes: number
+}
+
+export interface ManagedEventFields {
+  title: string
+  description: string
+  /** Always null — Low Base events do not use the prescriptions FK column. */
+  prescription_id: null
+  details: ManagedEventDetails
+}
+
 export interface DesiredSlot {
   dayOfWeek: number // 0=Sun..6=Sat
   time: string // "HH:MM" local
@@ -116,6 +142,40 @@ export function lowBaseEventDescription(
     `Duration: ${minutesPerSession}`,
     `Prescription ID: ${prescriptionId}`,
   ].join("\n")
+}
+
+/** The title / description / prescription_id / details for a managed Low Base
+ *  event. prescription_id is always null; linkage lives in details. Pure. */
+export function lowBaseManagedEventFields(params: {
+  prescriptionId: string
+  slotKey: string
+  dayOfWeek: number
+  time: string
+  mepBpm: number | null
+  minutesPerSession: number
+}): ManagedEventFields {
+  return {
+    title: lowBaseEventLabel(params.minutesPerSession, params.mepBpm),
+    description: lowBaseEventDescription(params.mepBpm, params.minutesPerSession, params.prescriptionId),
+    prescription_id: null,
+    details: {
+      source: LOW_BASE_SOURCE,
+      low_base_prescription_id: params.prescriptionId,
+      slot_key: params.slotKey,
+      day_of_week: params.dayOfWeek,
+      time: params.time,
+      mep_bpm: params.mepBpm,
+      minutes: params.minutesPerSession,
+    },
+  }
+}
+
+/** True when an event's details mark it as managed by THIS Low Base prescription.
+ *  Manual events (no source) and events from other prescriptions never match. */
+export function isManagedLowBaseEvent(details: unknown, prescriptionId: string): boolean {
+  if (!details || typeof details !== "object") return false
+  const d = details as Record<string, unknown>
+  return d.source === LOW_BASE_SOURCE && d.low_base_prescription_id === prescriptionId
 }
 
 /** Remove a managed event: delete if wholly in the future, else truncate at

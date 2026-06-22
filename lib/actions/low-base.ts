@@ -11,6 +11,8 @@ import { getOperatingTimeZone } from "@/lib/data/settings"
 import { wallClockToUtc, dayKeyInZone } from "@/lib/calendar/timezone"
 import {
   planLowBaseSync,
+  lowBaseManagedEventFields,
+  isManagedLowBaseEvent,
   lowBaseEventLabel,
   lowBaseEventDescription,
   type ExistingManagedEvent,
@@ -20,14 +22,14 @@ import type { ActionState } from "@/lib/actions/types"
 import type { LowBaseSlot } from "@/types/models"
 import type { Json } from "@/types/database"
 
-const MANAGED_SOURCE = "low_base_schedule"
-
 /**
  * Create or update the athlete's Low Base prescription (one per client) AND
  * reconcile the recurring Low Base calendar events it owns. The prescription is
  * the source of truth: a deterministic plan creates/updates/truncates/deletes
- * only events linked by prescription_id with details.source = low_base_schedule.
- * Manual (unlinked) Low Base events are never touched, and completed history is
+ * only events tagged in details (source = low_base_schedule +
+ * low_base_prescription_id). The athlete_calendar_events.prescription_id column
+ * is NOT used — it FK-references the separate `prescriptions` table — so managed
+ * Low Base events keep it null. Manual events are never touched, and history is
  * preserved (value changes split forward). Calendar sync is real-mode only.
  */
 export async function saveLowBasePrescriptionAction(
@@ -121,16 +123,18 @@ async function reconcileCalendar(
   const tz = await getOperatingTimeZone()
   const today = dayKeyInZone(new Date(), tz)
 
-  // Load the events this prescription manages (linked + tagged).
+  // Load the events this prescription manages — matched purely by details
+  // (source + low_base_prescription_id). The prescription_id column is NOT used
+  // (it FK-references the separate `prescriptions` table); managed events keep
+  // it null, so manual events and other prescriptions are never touched.
   const { data: events, error: gErr } = await supabase
     .from("athlete_calendar_events")
     .select("*")
     .eq("client_id", clientId)
-    .eq("prescription_id", input.prescriptionId)
   if (gErr) return { ok: false, error: gErr.message }
 
-  const managed = (events ?? []).filter(
-    (e) => (e.details as Record<string, unknown> | null)?.source === MANAGED_SOURCE
+  const managed = (events ?? []).filter((e) =>
+    isManagedLowBaseEvent(e.details, input.prescriptionId)
   )
   const rowById = new Map(managed.map((e) => [e.id, e]))
 
@@ -172,27 +176,28 @@ async function reconcileCalendar(
       const startsAt = wallClockToUtc(`${op.anchorDate}T${op.time}:00`, tz)
       if (!startsAt) return { ok: false, error: `Invalid slot time ${op.time}.` }
       const endsAt = new Date(startsAt.getTime() + op.minutesPerSession * 60_000)
+      const fields = lowBaseManagedEventFields({
+        prescriptionId: input.prescriptionId,
+        slotKey: op.slotKey,
+        dayOfWeek: op.dayOfWeek,
+        time: op.time,
+        mepBpm: op.mepBpm,
+        minutesPerSession: op.minutesPerSession,
+      })
       const { error } = await supabase.from("athlete_calendar_events").insert({
         coach_id: coachId,
         client_id: clientId,
         category: "low_base",
-        title: lowBaseEventLabel(op.minutesPerSession, op.mepBpm),
-        description: lowBaseEventDescription(op.mepBpm, op.minutesPerSession, input.prescriptionId),
+        title: fields.title,
+        description: fields.description,
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
         all_day: false,
         status: "planned",
         recurrence: "weekly",
         recurrence_until: op.recurrenceUntil,
-        prescription_id: input.prescriptionId,
-        details: {
-          source: MANAGED_SOURCE,
-          slot_key: op.slotKey,
-          day_of_week: op.dayOfWeek,
-          time: op.time,
-          mep_bpm: op.mepBpm,
-          minutes: op.minutesPerSession,
-        },
+        prescription_id: fields.prescription_id, // null — linkage is in details
+        details: fields.details as unknown as Json,
       })
       if (error) return { ok: false, error: error.message }
     } else if (op.type === "update") {
@@ -219,6 +224,16 @@ async function reconcileCalendar(
         .update({ recurrence_until: op.recurrenceUntil, updated_at: new Date().toISOString() })
         .eq("id", op.eventId)
       if (error) return { ok: false, error: error.message }
+      // Drop now-orphaned future overrides beyond the retained boundary, but
+      // never touch completed/historical occurrences.
+      if (op.recurrenceUntil) {
+        await supabase
+          .from("athlete_calendar_event_overrides")
+          .delete()
+          .eq("event_id", op.eventId)
+          .gt("occurrence_date", op.recurrenceUntil)
+          .or("status.is.null,status.neq.completed")
+      }
     } else if (op.type === "delete") {
       const { error } = await supabase.from("athlete_calendar_events").delete().eq("id", op.eventId)
       if (error) return { ok: false, error: error.message }

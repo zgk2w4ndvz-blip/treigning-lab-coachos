@@ -4,9 +4,11 @@
 --
 -- Adds the per-week schedule + date window to low_base_prescriptions so the
 -- prescription drives a deterministic set of weekly athlete_calendar_events
--- (one event per day-slot, category low_base, linked via prescription_id and
--- details.source = 'low_base_schedule'). NO changes to the calendar tables:
--- prescription_id / details already exist on athlete_calendar_events, and the
+-- (one event per day-slot, category low_base, tagged in details.source =
+-- 'low_base_schedule' + details.low_base_prescription_id). The calendar's
+-- prescription_id column is left null (it FK-references the separate
+-- `prescriptions` table), so linkage lives in details. NO changes to the
+-- calendar tables: details already exists on athlete_calendar_events, and the
 -- "future split" used by the reconciler reuses the existing recurrence_until
 -- mechanism — so completed history is never rewritten.
 --

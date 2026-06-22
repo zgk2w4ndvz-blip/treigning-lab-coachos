@@ -8,6 +8,9 @@ import {
   firstOnOrAfter,
   lowBaseEventLabel,
   lowBaseEventDescription,
+  lowBaseManagedEventFields,
+  isManagedLowBaseEvent,
+  LOW_BASE_SOURCE,
   type ExistingManagedEvent,
   type LowBaseScheduleInput,
 } from "@/lib/calendar/low-base-sync"
@@ -159,4 +162,38 @@ assert.equal(firstOnOrAfter("2026-06-22", 0), "2026-06-28") // Mon -> next Sun
   assert.ok(!ops.some((o) => o.type === "truncate" && o.eventId === "e1"), "kept event untouched")
 }
 
-console.log("✓ low-base-sync: create / idempotent / forward-split / in-place / remove / end-date / dedup passed")
+// 9. Managed event fields: prescription_id is NULL; linkage lives in details.
+{
+  const f = lowBaseManagedEventFields({
+    prescriptionId: RX,
+    slotKey: slotKeyOf(1, "08:00"),
+    dayOfWeek: 1,
+    time: "08:00",
+    mepBpm: 145,
+    minutesPerSession: 45,
+  })
+  assert.equal(f.prescription_id, null, "prescription_id must be null (no FK to prescriptions)")
+  assert.equal(f.details.source, LOW_BASE_SOURCE)
+  assert.equal(f.details.low_base_prescription_id, RX, "linkage stored in details")
+  assert.equal(f.details.slot_key, "1|08:00")
+  assert.equal(f.details.mep_bpm, 145)
+  assert.equal(f.details.minutes, 45)
+  assert.equal(f.title, "Low Base – 45 min @ 145 bpm")
+}
+
+// 10. Lookup matches by details.low_base_prescription_id; manual + other-rx events do NOT.
+{
+  const mine = { source: LOW_BASE_SOURCE, low_base_prescription_id: RX }
+  const otherRx = { source: LOW_BASE_SOURCE, low_base_prescription_id: "rx-2" }
+  const manualNoSource = { foo: "bar" }
+  assert.equal(isManagedLowBaseEvent(mine, RX), true, "matches own prescription")
+  assert.equal(isManagedLowBaseEvent(otherRx, RX), false, "ignores other prescription")
+  assert.equal(isManagedLowBaseEvent(manualNoSource, RX), false, "ignores manual event (no source)")
+  assert.equal(isManagedLowBaseEvent(null, RX), false, "ignores null details")
+  // A coach-Rx-linked event with a real prescriptions FK but no low-base source is left alone.
+  assert.equal(isManagedLowBaseEvent({ source: "coach_rx" }, RX), false)
+}
+
+console.log(
+  "✓ low-base-sync: create / idempotent / forward-split / in-place / remove / end-date / dedup / details-linkage (prescription_id null) passed"
+)
