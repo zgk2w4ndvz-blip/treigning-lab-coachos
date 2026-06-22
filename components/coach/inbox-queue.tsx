@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Check, X, ShieldAlert, UserX } from "lucide-react"
 
 import { reviewSuggestionAction } from "@/lib/actions/inbox"
+import { groupByMessage } from "@/lib/messages/group-inbox"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -72,6 +73,119 @@ function lowBaseInfo(details: Details) {
 
 const isCoachRx = (details: Details) => !!details && details.author_type === "coach"
 
+/** One suggested action inside a message card — keeps its own approve/deny. */
+function ActionBlock({
+  item,
+  unmatched,
+  onEdit,
+  onReview,
+}: {
+  item: ReviewQueueItem
+  unmatched: boolean
+  onEdit: (id: string, v: string) => void
+  onReview: (item: ReviewQueueItem, decision: "approve" | "reject") => void
+}) {
+  const done = item.status !== "pending"
+  const bc = bodyCompRows(item.details)
+  const nutr = nutritionRows(item.details)
+  const lb = lowBaseInfo(item.details)
+  const coach = isCoachRx(item.details)
+  const banner = coach ? "Coach Prescription Detected" : bc ? "Athlete Update Detected" : null
+
+  return (
+    <div className="rounded-md border p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="secondary">{DOMAIN_LABELS[item.domain]}</Badge>
+        {item.sensitive ? (
+          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <ShieldAlert className="mr-1 size-3" /> Sensitive — manual review
+          </Badge>
+        ) : null}
+        <span className="text-muted-foreground text-xs">conf {Math.round(item.confidence * 100)}%</span>
+        {done ? (
+          <Badge variant="outline" className="capitalize">{item.status}</Badge>
+        ) : null}
+      </div>
+
+      {bc || nutr || lb ? (
+        <div className="rounded-md border p-3">
+          {banner ? (
+            <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-wide uppercase">{banner}</p>
+          ) : null}
+          {bc ? (
+            <>
+              <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
+              <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                {bc.map((r) => (
+                  <li key={r.label} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">{r.label}</span>
+                    <span className="font-medium tabular-nums">{r.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {nutr ? (
+            <>
+              <p className="mb-1.5 text-sm font-semibold">Nutrition Prescription</p>
+              <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                {nutr.map((r) => (
+                  <li key={r.label} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">{r.label}</span>
+                    <span className="font-medium tabular-nums">{r.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {lb ? (
+            <>
+              <p className="mb-1.5 text-sm font-semibold">Low Base Prescription</p>
+              <ul className="space-y-1 text-sm">
+                {lb.mins != null ? <li className="tabular-nums">{lb.mins} minutes/session</li> : null}
+                {lb.freq != null ? <li className="tabular-nums">{lb.freq}× per week</li> : null}
+                {lb.weekly != null ? (
+                  <li className="text-muted-foreground pt-1">
+                    Total Weekly Time:{" "}
+                    <span className="text-foreground font-medium tabular-nums">{lb.weekly} min/week</span>
+                  </li>
+                ) : null}
+              </ul>
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
+          <Textarea
+            defaultValue={item.suggestedProtocol}
+            onChange={(e) => onEdit(item.id, e.target.value)}
+            rows={2}
+            className="text-sm"
+            disabled={done}
+          />
+        </div>
+      )}
+
+      {!done ? (
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => onReview(item, "reject")}>
+            <X className="size-4" /> Reject
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => onReview(item, "approve")}
+            disabled={unmatched}
+            title={unmatched ? "Match an athlete first" : undefined}
+          >
+            <Check className="size-4" /> Approve
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
   const [rows, setRows] = useState(items)
   const [edits, setEdits] = useState<Record<string, string>>({})
@@ -91,6 +205,9 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
     [rows, show, sensitiveOnly]
   )
 
+  // Collapse each source message's actions into one card.
+  const groups = useMemo(() => groupByMessage(filtered), [filtered])
+
   function review(item: ReviewQueueItem, decision: "approve" | "reject") {
     const editedProtocol =
       edits[item.id] != null && edits[item.id].trim() !== item.suggestedProtocol
@@ -107,6 +224,8 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
       }
     })
   }
+
+  const onEdit = (id: string, v: string) => setEdits((p) => ({ ...p, [id]: v }))
 
   return (
     <div className="space-y-3">
@@ -128,27 +247,17 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
         </Button>
       </div>
 
-      {filtered.length === 0 ? (
+      {groups.length === 0 ? (
         <EmptyState icon={Inbox} title="Queue is clear" description="No suggestions match this filter." className="py-10" />
       ) : (
-        filtered.map((item) => {
-          const done = item.status !== "pending"
-          const unmatched = item.matchMethod === "unmatched" || !item.clientId
+        groups.map((group) => {
+          const unmatched = group.matchMethod === "unmatched" || !group.clientId
           return (
-            <Card key={item.id} className={cn(item.sensitive && "border-amber-300 dark:border-amber-900/60")}>
+            <Card key={group.key} className={cn(group.sensitive && "border-amber-300 dark:border-amber-900/60")}>
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{DOMAIN_LABELS[item.domain]}</Badge>
-                  {item.sensitive ? (
-                    <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      <ShieldAlert className="mr-1 size-3" /> Sensitive — manual review
-                    </Badge>
-                  ) : null}
-                  <span className="text-muted-foreground text-xs">
-                    conf {Math.round(item.confidence * 100)}%
-                  </span>
-                  {done ? (
-                    <Badge variant="outline" className="capitalize">{item.status}</Badge>
+                  {group.actions.length > 1 ? (
+                    <Badge variant="secondary">{group.actions.length} suggested actions</Badge>
                   ) : null}
                   <span className="ml-auto text-xs">
                     {unmatched ? (
@@ -157,7 +266,7 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
                       </span>
                     ) : (
                       <span className="text-muted-foreground">
-                        {item.athleteName} · {item.matchMethod} {Math.round(item.matchConfidence * 100)}%
+                        {group.athleteName} · {group.matchMethod} {Math.round(group.matchConfidence * 100)}%
                       </span>
                     )}
                   </span>
@@ -165,110 +274,22 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
 
                 <p className="bg-muted/50 rounded p-2 text-sm">
                   <span className="text-muted-foreground text-[11px] block mb-0.5">
-                    {item.source} · {item.senderLabel ?? "unknown sender"}
+                    {group.source} · {group.senderLabel ?? "unknown sender"}
                   </span>
-                  “{item.messageSnippet}”
+                  “{group.messageSnippet}”
                 </p>
 
-                {(() => {
-                  const bc = bodyCompRows(item.details)
-                  const nutr = nutritionRows(item.details)
-                  const lb = lowBaseInfo(item.details)
-                  const coach = isCoachRx(item.details)
-                  const banner = coach
-                    ? "Coach Prescription Detected"
-                    : bc
-                      ? "Athlete Update Detected"
-                      : null
-
-                  if (bc || nutr || lb) {
-                    return (
-                      <div className="rounded-md border p-3">
-                        {banner ? (
-                          <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-wide uppercase">
-                            {banner}
-                          </p>
-                        ) : null}
-                        {bc ? (
-                          <>
-                            <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
-                            <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                              {bc.map((r) => (
-                                <li key={r.label} className="flex justify-between gap-2">
-                                  <span className="text-muted-foreground">{r.label}</span>
-                                  <span className="font-medium tabular-nums">{r.value}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        ) : null}
-                        {nutr ? (
-                          <>
-                            <p className="mb-1.5 text-sm font-semibold">Nutrition Prescription</p>
-                            <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                              {nutr.map((r) => (
-                                <li key={r.label} className="flex justify-between gap-2">
-                                  <span className="text-muted-foreground">{r.label}</span>
-                                  <span className="font-medium tabular-nums">{r.value}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        ) : null}
-                        {lb ? (
-                          <>
-                            <p className="mb-1.5 text-sm font-semibold">Low Base Prescription</p>
-                            <ul className="space-y-1 text-sm">
-                              {lb.mins != null ? (
-                                <li className="tabular-nums">{lb.mins} minutes/session</li>
-                              ) : null}
-                              {lb.freq != null ? (
-                                <li className="tabular-nums">{lb.freq}× per week</li>
-                              ) : null}
-                              {lb.weekly != null ? (
-                                <li className="text-muted-foreground pt-1">
-                                  Total Weekly Time:{" "}
-                                  <span className="text-foreground font-medium tabular-nums">
-                                    {lb.weekly} min/week
-                                  </span>
-                                </li>
-                              ) : null}
-                            </ul>
-                          </>
-                        ) : null}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
-                      <Textarea
-                        defaultValue={item.suggestedProtocol}
-                        onChange={(e) => setEdits((p) => ({ ...p, [item.id]: e.target.value }))}
-                        rows={2}
-                        className="text-sm"
-                        disabled={done}
-                      />
-                    </div>
-                  )
-                })()}
-
-                {!done ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => review(item, "reject")}>
-                      <X className="size-4" /> Reject
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => review(item, "approve")}
-                      disabled={unmatched}
-                      title={unmatched ? "Match an athlete first" : undefined}
-                    >
-                      <Check className="size-4" /> Approve
-                    </Button>
-                  </div>
-                ) : null}
+                <div className="space-y-3">
+                  {group.actions.map((item) => (
+                    <ActionBlock
+                      key={item.id}
+                      item={item}
+                      unmatched={unmatched}
+                      onEdit={onEdit}
+                      onReview={review}
+                    />
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )

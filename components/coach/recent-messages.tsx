@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react"
 
 import { AlertCard } from "@/components/shared/alert-card"
 import { ActionRow } from "@/components/shared/action-row"
+import { uniqueByMessage } from "@/lib/messages/group-inbox"
 import { timeAgo } from "@/lib/utils/format"
 import type { ReviewQueueItem, MessageSource } from "@/types/models"
 
@@ -19,13 +20,14 @@ const sourceIcon: Partial<Record<MessageSource, LucideIcon>> = {
  * queue. No new data source — same `getInbox()` items the Inbox page uses.
  */
 export function RecentMessages({ items }: { items: ReviewQueueItem[] }) {
-  const recent = [...items]
-    .sort(
-      (a, b) =>
-        new Date(b.receivedAt ?? b.createdAt).getTime() -
-        new Date(a.receivedAt ?? a.createdAt).getTime()
-    )
-    .slice(0, 6)
+  // One row per source message — a message with several suggested actions must
+  // not repeat. Sort newest-first, then keep the first item per message.
+  const sorted = [...items].sort(
+    (a, b) =>
+      new Date(b.receivedAt ?? b.createdAt).getTime() -
+      new Date(a.receivedAt ?? a.createdAt).getTime()
+  )
+  const recent = uniqueByMessage(sorted).slice(0, 6)
 
   return (
     <AlertCard
