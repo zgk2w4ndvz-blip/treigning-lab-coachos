@@ -9,11 +9,16 @@ import "server-only"
 import fs from "node:fs"
 import path from "node:path"
 
+import type { LowBaseSlot } from "@/types/models"
+
 export interface StoredLowBase {
   mep_bpm: number
   frequency_per_week: number
   minutes_per_session: number
   notes: string | null
+  start_date: string | null
+  end_date: string | null
+  schedule: LowBaseSlot[]
   created_at: string
   updated_at: string
 }

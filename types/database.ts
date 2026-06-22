@@ -613,9 +613,12 @@ export interface Database {
         frequency_per_week: number
         minutes_per_session: number
         notes: string | null
+        start_date: string | null
+        end_date: string | null
+        schedule: Json
         created_at: Timestamp
         updated_at: Timestamp
-      }, Defaults | "updated_at">
+      }, Defaults | "updated_at" | "start_date" | "end_date" | "schedule">
       weight_plans: Table<{
         id: string
         coach_id: string
