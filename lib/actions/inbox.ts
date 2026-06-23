@@ -167,6 +167,10 @@ export async function reviewSuggestionAction(
               fat_g?: number
               minutes_per_session?: number
               frequency_per_week?: number
+              vo2_max?: number
+              mep_bpm?: number
+              aerobic_threshold_bpm?: number
+              max_hr_bpm?: number
             }
           | null
 
@@ -275,6 +279,37 @@ export async function reviewSuggestionAction(
             })
             if (error) return { ok: false, error: error.message }
           }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else if (details?.action === "metabolic_assessment") {
+          // Coach metabolic biometrics → log a metabolic_assessments row. The
+          // assessment is timestamped from the source message when available.
+          const fields: {
+            vo2_max?: number
+            mep_bpm?: number
+            aerobic_threshold_bpm?: number
+            max_hr_bpm?: number
+          } = {}
+          if (details.vo2_max != null) fields.vo2_max = details.vo2_max
+          if (details.mep_bpm != null) fields.mep_bpm = details.mep_bpm
+          if (details.aerobic_threshold_bpm != null) fields.aerobic_threshold_bpm = details.aerobic_threshold_bpm
+          if (details.max_hr_bpm != null) fields.max_hr_bpm = details.max_hr_bpm
+          if (Object.keys(fields).length === 0) {
+            return { ok: false, error: "No metabolic values to log." }
+          }
+          const { data: msg } = await supabase
+            .from("message_ingest").select("received_at").eq("id", s.message_id).single()
+          const { error } = await supabase.from("metabolic_assessments").insert({
+            client_id: s.client_id,
+            logged_by: coach.id,
+            source: "imessage",
+            assessed_at: msg?.received_at ?? now,
+            ...fields,
+          })
+          if (error) return { ok: false, error: error.message }
           const { error: uErr } = await supabase
             .from("suggested_actions")
             .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
