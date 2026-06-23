@@ -305,7 +305,10 @@ export async function reviewSuggestionAction(
           const { error } = await supabase.from("metabolic_assessments").insert({
             client_id: s.client_id,
             logged_by: coach.id,
-            source: "imessage",
+            // Coach-relayed values are a manual entry (the iMessage channel is
+            // recorded in notes; `source` is constrained to cart/manual_cart).
+            source: "manual_cart",
+            notes: "From iMessage approval",
             assessed_at: msg?.received_at ?? now,
             ...fields,
           })
