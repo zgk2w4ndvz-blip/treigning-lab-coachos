@@ -84,7 +84,42 @@ for (const s of combined) {
   assert.equal((s.details as D).author_type, "coach")
 }
 
-// ---- Non-prescription ignored ----------------------------------------------
-assert.deepEqual(extractCoachPrescriptions("nice work today, proud of you"), [])
+// ---- Metabolic biometrics (the Wiley Wilson case) --------------------------
+// "Vo2 max went from 63.22 to 67.52" → takes the NEW value; lactate threshold.
+const vo2 = byAction("Vo2 max went from 63.22 to 67.52\n\nLactate threshold is 178bpm", "metabolic_assessment")
+assert.equal(vo2?.vo2_max, 67.52, "VO2max uses the post-'to' value")
+assert.equal(vo2?.aerobic_threshold_bpm, 178, "lactate threshold → aerobic_threshold_bpm")
+assert.equal(vo2?.author_type, "coach")
 
-console.log("✓ coach-rx suite: nutrition + low-base + combined + aliases + no-duplicate assertions passed")
+// crossover point → mep_bpm
+assert.equal(byAction("Crossover point- 141", "metabolic_assessment")?.mep_bpm, 141)
+// max HR
+assert.equal(byAction("max hr 192", "metabolic_assessment")?.max_hr_bpm, 192)
+// single VO2max value (no "from/to")
+assert.equal(byAction("VO2max 58.1 today", "metabolic_assessment")?.vo2_max, 58.1)
+
+// ---- Body composition (InBody) on an OUTBOUND coach message ----------------
+const bc = byAction("PBF 11.4%, SMM 88.4, Body fat mass 19.7", "body_composition_update")
+assert.equal(bc?.body_fat_percentage, 11.4)
+assert.equal(bc?.skeletal_muscle_mass_lbs, 88.4)
+assert.equal(bc?.author_type, "coach")
+
+// ---- Multiple updates in one outbound message (Wiley's full message) -------
+const full = extractCoachPrescriptions(
+  "Crossover point- 141\n\nLow base prescription- 3 times per week. 30 minutes each session. Monday, Thursday, Friday.\n\nNutrition prescription- 2751 calories, 178 g protein, 337g carbs, 76g fat"
+)
+const fullActions = full.map((s) => (s.details as D).action).sort()
+assert.deepEqual(
+  fullActions,
+  ["low_base_prescription", "metabolic_assessment", "nutrition_prescription"],
+  "one message → low base + nutrition + metabolic suggestions"
+)
+
+// ---- No false positives on stray numbers -----------------------------------
+assert.deepEqual(extractCoachPrescriptions("Yes"), [])
+assert.deepEqual(extractCoachPrescriptions("Sounds good, see you at 8:30"), [])
+assert.deepEqual(extractCoachPrescriptions("Lock it in for 8:30"), [])
+// a number near no metabolic keyword does not create a metabolic suggestion
+assert.equal(byAction("you ran 141 minutes", "metabolic_assessment"), undefined)
+
+console.log("✓ coach-rx suite: nutrition + low-base + metabolic + body-comp + multi-update + no-false-positive assertions passed")

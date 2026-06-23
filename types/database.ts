@@ -31,7 +31,7 @@ export type WeightCutStatus =
   | "completed"
   | "cancelled"
 export type WeighInKind = "check_in" | "official" | "unofficial"
-export type MetabolicSource = "cart" | "manual_cart"
+export type MetabolicSource = "cart" | "manual_cart" | "imessage"
 export type MetabolicCurvePhase = "increase" | "decrease"
 export type ScheduleSessionType =
   | "training"
