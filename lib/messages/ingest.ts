@@ -16,6 +16,7 @@ import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
 import { analyzeMessage } from "@/lib/messages/analyze"
 import { extractCoachPrescriptions } from "@/lib/messages/coach-rx"
+import { aiExtractSuggestions } from "@/lib/ai/extract"
 import { matchAthlete, normalizeHandle, type MatchClient } from "@/lib/messages/match"
 import type { ParsedMessage } from "@/lib/messages/parse"
 import { fullName } from "@/lib/utils/format"
@@ -162,7 +163,22 @@ export async function runIngest(
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const direction = m.direction ?? "incoming"
     const incoming = direction === "incoming"
-    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
+    // AI-first extraction with a deterministic regex fallback. AI is OFF unless
+    // AI_ENABLED=true (then null is returned instantly with no API/DB cost), so
+    // the default behavior is unchanged. AI output is still only PENDING
+    // suggestions — never auto-applied.
+    const regexAnalyzed = incoming
+      ? analyzeMessage(m.body, { matched: !!match.clientId })
+      : extractCoachPrescriptions(m.body)
+    const athleteFirstName = match.clientId
+      ? roster.find((c) => c.id === match.clientId)?.first_name ?? null
+      : null
+    const aiAnalyzed = await aiExtractSuggestions(supabase, m.body, {
+      coachId,
+      direction,
+      athleteFirstName,
+    })
+    const analyzed = aiAnalyzed ?? regexAnalyzed
     results.push({
       externalId: m.externalId,
       clientId: match.clientId,
