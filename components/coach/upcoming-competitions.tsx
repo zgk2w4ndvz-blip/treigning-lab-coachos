@@ -22,6 +22,9 @@ export function UpcomingCompetitions({ roster }: { roster: ClientListItem[] }) {
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">Upcoming competitions</CardTitle>
+        <Link href="/competitions" className="text-primary text-sm hover:underline">
+          View all
+        </Link>
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
