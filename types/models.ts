@@ -259,6 +259,10 @@ export interface ClientListItem {
   complianceScore: number
   /** Latest body-fat % for the roster card (null when no measurement). */
   latestBodyFatPct?: number | null
+  /** Most recent athlete activity (latest weight/hydration/recovery log) as an
+   *  ISO timestamp; null when the athlete has never logged. Drives the roster
+   *  "Recently Active" sort. */
+  lastActiveAt?: string | null
 }
 
 // ---- Body composition ------------------------------------------------------

@@ -52,11 +52,11 @@ export async function listClientsForRoster(): Promise<ClientListItem[]> {
       supabase.from("alerts").select("client_id").eq("status", "active"),
       supabase
         .from("hydration_logs")
-        .select("client_id")
+        .select("client_id, logged_date")
         .gte("logged_date", dateDaysAgo(7)),
       supabase
         .from("recovery_logs")
-        .select("client_id")
+        .select("client_id, logged_date")
         .gte("logged_date", dateDaysAgo(7)),
       supabase
         .from("weight_logs")
@@ -81,16 +81,28 @@ export async function listClientsForRoster(): Promise<ClientListItem[]> {
   const hydrationCount = tally(hydration)
   const recoveryCount = tally(recovery)
 
-  return (clients ?? []).map((client) => ({
-    client,
-    nextCompetition: nextCompByClient.get(client.id) ?? null,
-    openAlertCount: alertCount.get(client.id) ?? 0,
-    complianceScore: rosterCompliance(
-      hydrationCount.get(client.id) ?? 0,
-      recoveryCount.get(client.id) ?? 0
-    ),
-    latestBodyFatPct: bodyFatByClient.get(client.id) ?? null,
-  }))
+  // Latest activity timestamp per client across their weight/hydration/recovery
+  // logs. Weight history is unfiltered so it covers every athlete who has ever
+  // logged; hydration/recovery only contribute their (recent) 7-day window.
+  const lastActive = new Map<string, number>()
+  foldLatest(lastActive, (weights ?? []).map((w) => ({ client_id: w.client_id, at: w.logged_at })))
+  foldLatest(lastActive, (hydration ?? []).map((h) => ({ client_id: h.client_id, at: h.logged_date })))
+  foldLatest(lastActive, (recovery ?? []).map((r) => ({ client_id: r.client_id, at: r.logged_date })))
+
+  return (clients ?? []).map((client) => {
+    const activeAt = lastActive.get(client.id)
+    return {
+      client,
+      nextCompetition: nextCompByClient.get(client.id) ?? null,
+      openAlertCount: alertCount.get(client.id) ?? 0,
+      complianceScore: rosterCompliance(
+        hydrationCount.get(client.id) ?? 0,
+        recoveryCount.get(client.id) ?? 0
+      ),
+      latestBodyFatPct: bodyFatByClient.get(client.id) ?? null,
+      lastActiveAt: activeAt != null ? new Date(activeAt).toISOString() : null,
+    }
+  })
 }
 
 export async function getClientById(clientId: string): Promise<Client | null> {
@@ -221,6 +233,24 @@ function tally(rows: { client_id: string }[] | null): Map<string, number> {
   const m = new Map<string, number>()
   for (const r of rows ?? []) m.set(r.client_id, (m.get(r.client_id) ?? 0) + 1)
   return m
+}
+
+/**
+ * Fold activity rows into a per-client "latest timestamp" map. `at` is read
+ * from each row (an ISO timestamp or a YYYY-MM-DD date) and the max is kept.
+ * Rows with a missing/unparseable timestamp are skipped.
+ */
+function foldLatest(
+  acc: Map<string, number>,
+  rows: { client_id: string; at: string | null }[] | null
+): Map<string, number> {
+  for (const r of rows ?? []) {
+    if (!r.at) continue
+    const t = Date.parse(r.at)
+    if (Number.isNaN(t)) continue
+    if (t > (acc.get(r.client_id) ?? -Infinity)) acc.set(r.client_id, t)
+  }
+  return acc
 }
 
 async function countSince(

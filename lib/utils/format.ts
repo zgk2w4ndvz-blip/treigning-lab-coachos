@@ -44,6 +44,21 @@ export function compareByLastFirst(
   })
 }
 
+/** Sort comparator: first name A→Z, then last name A→Z. Locale-aware and
+ *  case-insensitive. Pass to `Array.prototype.sort`. */
+export function compareByFirstLast(
+  a: { first_name: string; last_name: string },
+  b: { first_name: string; last_name: string }
+): number {
+  const byFirst = a.first_name.localeCompare(b.first_name, undefined, {
+    sensitivity: "base",
+  })
+  if (byFirst !== 0) return byFirst
+  return a.last_name.localeCompare(b.last_name, undefined, {
+    sensitivity: "base",
+  })
+}
+
 /** "Jun 14, 2026" */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—"
