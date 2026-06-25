@@ -15,6 +15,7 @@
     "db:baseline": "bash scripts/db-migrate.sh baseline",
     "import:scrape": "tsx tools/treigning-import/scrape.ts",
     "import:discover": "tsx tools/treigning-import/discover-metabolic.ts",
+    "import:discover-recovery": "tsx tools/treigning-import/discover-recovery.ts",
     "import:transform": "tsx tools/treigning-import/transform.ts",
     "import:dry-run": "tsx tools/treigning-import/upsert.ts",
     "import:apply": "tsx tools/treigning-import/upsert.ts --apply",
