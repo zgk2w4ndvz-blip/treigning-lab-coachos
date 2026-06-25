@@ -630,7 +630,21 @@ export interface Database {
         est_cost_usd: number
         ok: boolean
         created_at: Timestamp
-      }, Defaults | "prompt_tokens" | "completion_tokens" | "total_tokens" | "est_cost_usd" | "ok">
+        // AI Router (migration 0023) — routing metadata.
+        routed_to_regex: boolean
+        routed_to_claude: boolean
+        cache_hit: boolean
+        confidence: number | null
+        reason_for_ai: string | null
+        message_hash: string | null
+      }, Defaults | "prompt_tokens" | "completion_tokens" | "total_tokens" | "est_cost_usd" | "ok" | "routed_to_regex" | "routed_to_claude" | "cache_hit">
+      ai_extraction_cache: Table<{
+        message_hash: string
+        model: string
+        coach_id: string | null
+        suggestions: Json
+        created_at: Timestamp
+      }, "created_at">
       weight_plans: Table<{
         id: string
         coach_id: string

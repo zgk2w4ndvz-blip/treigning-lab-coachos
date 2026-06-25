@@ -6,12 +6,15 @@ import { aiStructuredJson } from "@/lib/ai/call"
 import { parseAiSuggestions } from "@/lib/ai/parse"
 import { AI_EXTRACTION_JSON_SCHEMA } from "@/lib/ai/schema"
 import { EXTRACTION_SYSTEM, buildExtractionUserPrompt } from "@/lib/ai/prompts/extraction"
+import type { RoutingMeta } from "@/lib/ai/usage"
 import type { ClassifiedSuggestion } from "@/lib/messages/classify"
 
 export interface AiExtractContext {
   coachId: string | null
   direction: "incoming" | "outgoing"
   athleteFirstName?: string | null
+  /** Router metadata (confidence, reason, message_hash) for the ai_usage row. */
+  routing?: RoutingMeta
 }
 
 /**
@@ -39,6 +42,7 @@ export async function aiExtractSuggestions(
     }),
     schemaName: "message_extraction",
     jsonSchema: AI_EXTRACTION_JSON_SCHEMA,
+    routing: ctx.routing,
   })
   if (raw === null) return null
 

@@ -17,6 +17,11 @@ import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
 import { analyzeMessage } from "@/lib/messages/analyze"
 import { extractCoachPrescriptions } from "@/lib/messages/coach-rx"
 import { aiExtractSuggestions } from "@/lib/ai/extract"
+import { getAiConfig } from "@/lib/ai/config"
+import { routeMessage } from "@/lib/ai/router"
+import { messageHash } from "@/lib/ai/hash"
+import { getCachedExtraction, putCachedExtraction } from "@/lib/ai/cache"
+import { logUsage } from "@/lib/ai/usage"
 import { matchAthlete, normalizeHandle, type MatchClient } from "@/lib/messages/match"
 import type { ParsedMessage } from "@/lib/messages/parse"
 import { fullName } from "@/lib/utils/format"
@@ -150,6 +155,7 @@ export async function runIngest(
   const { data: clients } = await supabase
     .from("clients").select("id, first_name, last_name, email, phone").eq("coach_id", coachId)
   const roster = (clients ?? []) as MatchClient[]
+  const aiCfg = getAiConfig()
   let matched = 0
   let suggestionCount = 0
   const preview: IngestPreviewItem[] = []
@@ -163,22 +169,60 @@ export async function runIngest(
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const direction = m.direction ?? "incoming"
     const incoming = direction === "incoming"
-    // AI-first extraction with a deterministic regex fallback. AI is OFF unless
-    // AI_ENABLED=true (then null is returned instantly with no API/DB cost), so
-    // the default behavior is unchanged. AI output is still only PENDING
-    // suggestions — never auto-applied.
+    // Deterministic regex extraction always runs first (free).
     const regexAnalyzed = incoming
       ? analyzeMessage(m.body, { matched: !!match.clientId })
       : extractCoachPrescriptions(m.body)
     const athleteFirstName = match.clientId
       ? roster.find((c) => c.id === match.clientId)?.first_name ?? null
       : null
-    const aiAnalyzed = await aiExtractSuggestions(supabase, m.body, {
-      coachId,
-      direction,
-      athleteFirstName,
-    })
-    const analyzed = aiAnalyzed ?? regexAnalyzed
+
+    // Router: simple, high-confidence, single-domain messages keep the regex
+    // result; only complex/ambiguous ones go to Claude (where it likely helps).
+    // AI disabled → always regex (unchanged, no DB cost). Claude failure → regex
+    // fallback. A content-hash cache prevents re-analyzing a message we've seen.
+    // Output is ALWAYS pending suggestions — never auto-applied.
+    let analyzed = regexAnalyzed
+    let cacheHitSkipPersist = false
+    let cacheWriteHash: string | null = null
+    if (aiCfg.enabled) {
+      const { analysis, decision } = routeMessage(m.body, regexAnalyzed, aiCfg.router)
+      const hash = messageHash({ clientId: match.clientId, timestamp: m.receivedAt, body: m.body })
+      if (decision.target === "regex") {
+        if (!dryRun && aiCfg.logUsage) {
+          await logUsage(supabase, {
+            coachId, task: "message_routing", model: "regex",
+            promptTokens: 0, completionTokens: 0, ok: true,
+            routedToRegex: true, confidence: analysis.confidence,
+            reasonForAi: null, messageHash: hash,
+          })
+        }
+      } else {
+        const cached = dryRun ? null : await getCachedExtraction(supabase, hash, aiCfg.extractModel)
+        if (cached) {
+          // Already analyzed + persisted on a prior ingest: reuse, skip Claude,
+          // skip re-persisting (no duplicate call / charge / suggestions).
+          analyzed = cached
+          cacheHitSkipPersist = true
+          if (aiCfg.logUsage) {
+            await logUsage(supabase, {
+              coachId, task: "message_extraction", model: aiCfg.extractModel,
+              promptTokens: 0, completionTokens: 0, ok: true,
+              routedToClaude: true, cacheHit: true, confidence: analysis.confidence,
+              reasonForAi: decision.reason, messageHash: hash,
+            })
+          }
+        } else {
+          const aiAnalyzed = await aiExtractSuggestions(supabase, m.body, {
+            coachId, direction, athleteFirstName,
+            routing: { confidence: analysis.confidence, reasonForAi: decision.reason, messageHash: hash },
+          })
+          analyzed = aiAnalyzed ?? regexAnalyzed // regex fallback preserved
+          // Cache only successful Claude results — a fallback should retry next time.
+          if (!dryRun && aiAnalyzed) cacheWriteHash = hash
+        }
+      }
+    }
     results.push({
       externalId: m.externalId,
       clientId: match.clientId,
@@ -198,6 +242,11 @@ export async function runIngest(
       continue
     }
 
+    // Cache hit: this exact message was already analyzed AND persisted on a
+    // prior ingest. Skip re-persisting so we never create duplicate
+    // suggested_actions; the cache_hit row above records the saving.
+    if (cacheHitSkipPersist) continue
+
     const { data: msg, error: msgErr } = await supabase
       .from("message_ingest")
       .insert({
@@ -210,6 +259,7 @@ export async function runIngest(
       .select("id").single()
     if (msgErr || !msg) { errors.push(`Message skipped: ${msgErr?.message ?? "insert failed"}`); continue }
     const suggestions = analyzed
+    let persisted = true
     if (suggestions.length) {
       const { error: sErr } = await supabase.from("suggested_actions").insert(
         suggestions.map((s) => ({
@@ -220,8 +270,19 @@ export async function runIngest(
           source_message_id: m.externalId, source_timestamp: m.receivedAt, source_handle: sourceHandle,
         }))
       )
-      if (sErr) errors.push(`Suggestions skipped: ${sErr.message}`)
+      if (sErr) { errors.push(`Suggestions skipped: ${sErr.message}`); persisted = false }
       else suggestionCount += suggestions.length
+    }
+
+    // Cache a fresh, successfully-persisted Claude extraction so a re-ingest of
+    // the identical message skips the model call (and re-persistence).
+    if (cacheWriteHash && persisted) {
+      await putCachedExtraction(supabase, {
+        messageHash: cacheWriteHash,
+        model: aiCfg.extractModel,
+        coachId,
+        suggestions: analyzed,
+      })
     }
   }
 

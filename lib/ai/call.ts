@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { getAiConfig } from "@/lib/ai/config"
 import { getProvider } from "@/lib/ai/provider"
 import { estimateCostUsd, withinDailyCap } from "@/lib/ai/pricing"
-import { getTodaySpendUsd, logUsage } from "@/lib/ai/usage"
+import { getTodaySpendUsd, logUsage, type RoutingMeta } from "@/lib/ai/usage"
 
 interface AiCallArgs {
   supabase: SupabaseClient
@@ -15,6 +15,10 @@ interface AiCallArgs {
   userPrompt: string
   schemaName: string
   jsonSchema: Record<string, unknown>
+  /** Router metadata to record on the logged ai_usage row (e.g. confidence,
+   *  reason, message_hash). The call is always a fresh Claude call here, so
+   *  routedToClaude is forced true. */
+  routing?: RoutingMeta
 }
 
 /**
@@ -58,6 +62,8 @@ export async function aiStructuredJson(args: AiCallArgs): Promise<unknown | null
         promptTokens,
         completionTokens,
         ok: parsed !== null,
+        ...args.routing,
+        routedToClaude: true,
       })
       console.log(
         `[ai] ${args.task} provider=${provider.name} model=${cfg.extractModel} in=${promptTokens} out=${completionTokens} ~$${cost.toFixed(6)}`
@@ -75,6 +81,8 @@ export async function aiStructuredJson(args: AiCallArgs): Promise<unknown | null
         promptTokens: 0,
         completionTokens: 0,
         ok: false,
+        ...args.routing,
+        routedToClaude: true,
       })
     }
     return null
