@@ -619,6 +619,18 @@ export interface Database {
         created_at: Timestamp
         updated_at: Timestamp
       }, Defaults | "updated_at" | "start_date" | "end_date" | "schedule">
+      ai_usage: Table<{
+        id: string
+        coach_id: string | null
+        task: string
+        model: string
+        prompt_tokens: number
+        completion_tokens: number
+        total_tokens: number
+        est_cost_usd: number
+        ok: boolean
+        created_at: Timestamp
+      }, Defaults | "prompt_tokens" | "completion_tokens" | "total_tokens" | "est_cost_usd" | "ok">
       weight_plans: Table<{
         id: string
         coach_id: string
