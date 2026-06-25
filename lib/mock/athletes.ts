@@ -296,6 +296,7 @@ export const mockRoster: ClientListItem[] = mockClients.map((client) => ({
   openAlertCount: alertCountByClient[client.id] ?? 0,
   complianceScore: COMPLIANCE_BY_ID[client.id] ?? 70,
   latestBodyFatPct: mockWeightLogs(client.id).at(-1)?.body_fat_pct ?? null,
+  lastActiveAt: mockWeightLogs(client.id).at(-1)?.logged_at ?? null,
 }))
 
 export const mockDashboard: DashboardSummary = {

@@ -29,6 +29,7 @@ import {
   fullName,
   rosterName,
   compareByLastFirst,
+  compareByFirstLast,
   initials,
   formatDateShort,
   relativeDays,
@@ -36,11 +37,19 @@ import {
 import type { ClientListItem, ClientStatus } from "@/types/models"
 
 type StatusFilter = ClientStatus | "all"
-type SortKey = "last_asc" | "last_desc" | "modified_desc" | "modified_asc"
+type SortKey =
+  | "last_asc"
+  | "last_desc"
+  | "first_asc"
+  | "active_desc"
+  | "modified_desc"
+  | "modified_asc"
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "last_asc", label: "Last Name A → Z" },
   { value: "last_desc", label: "Last Name Z → A" },
+  { value: "first_asc", label: "First Name A → Z" },
+  { value: "active_desc", label: "Recently Active" },
   { value: "modified_desc", label: "Recently Modified" },
   { value: "modified_asc", label: "Oldest Modified" },
 ]
@@ -48,6 +57,12 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 /** Epoch millis for an updated_at; missing/invalid sorts to 0 (last). */
 function modifiedTime(item: ClientListItem): number {
   const t = item.client.updated_at ? Date.parse(item.client.updated_at) : NaN
+  return Number.isNaN(t) ? 0 : t
+}
+
+/** Epoch millis for last athlete activity; missing/invalid sorts to 0 (last). */
+function activeTime(item: ClientListItem): number {
+  const t = item.lastActiveAt ? Date.parse(item.lastActiveAt) : NaN
   return Number.isNaN(t) ? 0 : t
 }
 
@@ -87,6 +102,10 @@ export function ClientRoster({ items }: { items: ClientListItem[] }) {
       switch (sort) {
         case "last_desc":
           return -compareByLastFirst(a.client, b.client)
+        case "first_asc":
+          return compareByFirstLast(a.client, b.client)
+        case "active_desc":
+          return activeTime(b) - activeTime(a)
         case "modified_desc":
           return modifiedTime(b) - modifiedTime(a)
         case "modified_asc":

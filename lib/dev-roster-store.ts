@@ -282,6 +282,7 @@ export function getBypassRosterList(): ClientListItem[] {
       complianceScore: hashCompliance(client.id),
       latestBodyFatPct:
         a.bodyFatPct ?? mockWeightLogs(a.id).at(-1)?.body_fat_pct ?? null,
+      lastActiveAt: mockWeightLogs(a.id).at(-1)?.logged_at ?? null,
     }
   })
 }
