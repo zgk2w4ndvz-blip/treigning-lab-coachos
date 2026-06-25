@@ -1,9 +1,10 @@
 // The structured-output contract for AI message extraction. The model returns a
 // list of typed suggestions; we validate with zod and then map to the existing
 // ClassifiedSuggestion shape so output flows through the SAME pending-suggestion
-// pipeline (no new write surface). Strict json_schema is hand-written below so
-// it satisfies the Responses API requirements (all keys required;
-// additionalProperties:false; optional fields modelled as nullable).
+// pipeline (no new write surface). The hand-written JSON Schema below is passed
+// as the Claude tool `input_schema` (all keys required; additionalProperties:
+// false; optional fields modelled as nullable) so a forced tool call yields the
+// structured object directly.
 
 import { z } from "zod"
 
@@ -74,7 +75,7 @@ export const aiExtractionSchema = z.object({
 export type AiSuggestion = z.infer<typeof aiSuggestionSchema>
 export type AiExtraction = z.infer<typeof aiExtractionSchema>
 
-// ---- Strict JSON schema for the Responses API (text.format) ----------------
+// ---- JSON schema used as the Claude tool input_schema ----------------------
 const NUM_NULL = { type: ["number", "null"] } as const
 
 export const AI_EXTRACTION_JSON_SCHEMA = {

@@ -3,7 +3,7 @@ import "server-only"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { getAiConfig } from "@/lib/ai/config"
-import { getOpenAi } from "@/lib/ai/client"
+import { getProvider } from "@/lib/ai/provider"
 import { estimateCostUsd, withinDailyCap } from "@/lib/ai/pricing"
 import { getTodaySpendUsd, logUsage } from "@/lib/ai/usage"
 
@@ -21,13 +21,14 @@ interface AiCallArgs {
  * Run one structured AI call. Enforces the kill switch, the per-day USD cap, a
  * timeout + single retry, logs token usage, and returns the parsed JSON object —
  * or null on ANY problem (disabled / capped / timeout / invalid). Callers treat
- * null as "fall back to the deterministic path". Never throws.
+ * null as "fall back to the deterministic path". Never throws. Provider-agnostic:
+ * the actual vendor call lives behind getProvider() (lib/ai/provider.ts).
  */
 export async function aiStructuredJson(args: AiCallArgs): Promise<unknown | null> {
   const cfg = getAiConfig()
   if (!cfg.enabled) return null
-  const client = getOpenAi()
-  if (!client) return null
+  const provider = getProvider()
+  if (!provider) return null
 
   // Per-day cap: refuse if already at/over, or if a conservative projection of
   // this call would exceed the cap.
@@ -38,38 +39,16 @@ export async function aiStructuredJson(args: AiCallArgs): Promise<unknown | null
   }
 
   try {
-    const res = await client.responses.create(
-      {
-        model: cfg.extractModel,
-        input: [
-          { role: "system", content: args.system },
-          { role: "user", content: args.userPrompt },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: args.schemaName,
-            strict: true,
-            schema: args.jsonSchema,
-          },
-        },
-        max_output_tokens: cfg.maxOutputTokens,
-      },
-      { timeout: 15_000, maxRetries: 1 }
-    )
-
-    const promptTokens = res.usage?.input_tokens ?? 0
-    const completionTokens = res.usage?.output_tokens ?? 0
-
-    let parsed: unknown = null
-    const text = res.output_text
-    if (text) {
-      try {
-        parsed = JSON.parse(text)
-      } catch {
-        parsed = null
-      }
-    }
+    const { parsed, promptTokens, completionTokens } = await provider.structuredJson({
+      model: cfg.extractModel,
+      system: args.system,
+      userPrompt: args.userPrompt,
+      schemaName: args.schemaName,
+      jsonSchema: args.jsonSchema,
+      maxOutputTokens: cfg.maxOutputTokens,
+      timeoutMs: 15_000,
+      maxRetries: 1,
+    })
 
     if (cfg.logUsage) {
       const cost = await logUsage(args.supabase, {
@@ -81,7 +60,7 @@ export async function aiStructuredJson(args: AiCallArgs): Promise<unknown | null
         ok: parsed !== null,
       })
       console.log(
-        `[ai] ${args.task} model=${cfg.extractModel} in=${promptTokens} out=${completionTokens} ~$${cost.toFixed(6)}`
+        `[ai] ${args.task} provider=${provider.name} model=${cfg.extractModel} in=${promptTokens} out=${completionTokens} ~$${cost.toFixed(6)}`
       )
     }
 
