@@ -1,6 +1,8 @@
 // AI configuration — read from env. The feature is OFF unless AI_ENABLED=true
 // AND a key is present. All values are server-side (no NEXT_PUBLIC).
 
+import { DEFAULT_ROUTER_THRESHOLDS, type RouterThresholds } from "@/lib/ai/router"
+
 export interface AiConfig {
   enabled: boolean
   apiKey: string | null
@@ -8,6 +10,8 @@ export interface AiConfig {
   maxOutputTokens: number
   dailyUsdCap: number
   logUsage: boolean
+  /** Regex-vs-Claude routing thresholds (centralized + env-configurable). */
+  router: RouterThresholds
 }
 
 function num(v: string | undefined, fallback: number): number {
@@ -27,5 +31,18 @@ export function getAiConfig(): AiConfig {
     maxOutputTokens: num(process.env.AI_MAX_OUTPUT_TOKENS, 700),
     dailyUsdCap: num(process.env.AI_DAILY_USD_CAP, 2),
     logUsage: process.env.AI_LOG_USAGE !== "false",
+    router: {
+      // Router on by default; set AI_ROUTER_ENABLED=false to revert to the
+      // legacy AI-first behavior (Claude on every message) for rollback.
+      enabled: process.env.AI_ROUTER_ENABLED !== "false",
+      minConfidence: num(
+        process.env.AI_ROUTER_MIN_CONFIDENCE,
+        DEFAULT_ROUTER_THRESHOLDS.minConfidence
+      ),
+      narrativeWords: num(
+        process.env.AI_ROUTER_NARRATIVE_WORDS,
+        DEFAULT_ROUTER_THRESHOLDS.narrativeWords
+      ),
+    },
   }
 }
