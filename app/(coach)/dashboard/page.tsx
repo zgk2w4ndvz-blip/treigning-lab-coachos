@@ -53,22 +53,26 @@ export default async function DashboardPage() {
           label="Active clients"
           value={summary.activeClients}
           icon={Users}
+          href="/clients"
         />
         <StatCard
           label="Active cuts"
           value={summary.activeCuts}
           icon={Swords}
+          href="/combat"
         />
         <StatCard
           label="Competitions ≤30d"
           value={summary.upcomingCompetitions}
           icon={Trophy}
+          href="/competitions"
         />
         <StatCard
           label="Open alerts"
           value={summary.openAlerts}
           icon={Bell}
           accent={summary.openAlerts > 0 ? "critical" : "default"}
+          href="/alerts"
         />
         <StatCard
           label="Avg compliance"
@@ -81,6 +85,7 @@ export default async function DashboardPage() {
                 ? "warning"
                 : "critical"
           }
+          href="/clients"
         />
       </div>
 
