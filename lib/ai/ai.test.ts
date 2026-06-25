@@ -1,4 +1,4 @@
-// AI extraction unit tests — PURE pieces only (no live OpenAI calls).
+// AI extraction unit tests — PURE pieces only (no live API calls).
 // Run: `npm run test:ai`.
 
 import assert from "node:assert/strict"
@@ -11,9 +11,10 @@ import { buildExtractionUserPrompt, EXTRACTION_SYSTEM } from "@/lib/ai/prompts/e
 type D = Record<string, unknown>
 
 // ---- pricing ----------------------------------------------------------------
-assert.equal(estimateCostUsd("gpt-4o-mini", 1_000_000, 0), 0.15)
-assert.equal(estimateCostUsd("gpt-4o-mini", 0, 1_000_000), 0.6)
-assert.equal(estimateCostUsd("gpt-4o-mini", 0, 0), 0)
+assert.equal(estimateCostUsd("claude-haiku-4-5", 1_000_000, 0), 1)
+assert.equal(estimateCostUsd("claude-haiku-4-5", 0, 1_000_000), 5)
+assert.equal(estimateCostUsd("claude-opus-4-8", 1_000_000, 1_000_000), 30)
+assert.equal(estimateCostUsd("claude-haiku-4-5", 0, 0), 0)
 // unknown model → default (non-zero) price, never free
 assert.ok(estimateCostUsd("some-future-model", 1_000_000, 0) > 0)
 assert.ok(modelPrice("totally-unknown").inputPerM > 0)

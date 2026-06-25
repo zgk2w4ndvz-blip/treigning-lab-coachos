@@ -39,6 +39,7 @@
     "bridge:dry-run": "tsx tools/imessage-bridge/sync.ts --dry-run --verbose"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
     "@base-ui/react": "^1.5.0",
     "@clerk/nextjs": "^7.5.2",
     "@hookform/resolvers": "^5.4.0",
@@ -52,7 +53,6 @@
     "lucide-react": "^1.17.0",
     "next": "^15.5.19",
     "next-themes": "^0.4.6",
-    "openai": "^6.44.0",
     "radix-ui": "^1.4.3",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
