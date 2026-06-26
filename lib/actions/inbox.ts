@@ -13,6 +13,7 @@ import { addStoredPrescription } from "@/lib/dev-prescription-store"
 import { mockReviewQueue } from "@/lib/mock/inbox"
 import { runIngest } from "@/lib/messages/ingest"
 import { bodyCompToWeightLogFields } from "@/lib/messages/body-comp"
+import { parseRecoveryImport, recoveryLogRowFromImport, writeRecoveryLog } from "@/lib/recovery/apply"
 import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
 import { fetchGmailMessages } from "@/lib/messages/sources/gmail"
 import type { ActionState } from "@/lib/actions/types"
@@ -342,6 +343,27 @@ export async function reviewSuggestionAction(
             })
             if (error) return { ok: false, error: error.message }
           }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
+        } else if (details?.action === "recovery_import") {
+          // Connector-imported recovery metrics → exactly one recovery_logs row.
+          // Idempotent per (client, source_ref): a second approval never
+          // duplicates. Status flips to approved ONLY after a successful write.
+          const parsed = parseRecoveryImport(s.details)
+          if (!parsed.ok) return { ok: false, error: parsed.error }
+          const sourceRef =
+            s.source_message_id ??
+            `recovery:${parsed.data.connector ?? "treigninglab"}:${s.client_id}:${parsed.data.source_date}`
+          const row = recoveryLogRowFromImport(parsed.data, {
+            clientId: s.client_id,
+            loggedBy: coach.id,
+            sourceRef,
+          })
+          const w = await writeRecoveryLog(supabase, row)
+          if (!w.ok) return { ok: false, error: w.error }
           const { error: uErr } = await supabase
             .from("suggested_actions")
             .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })

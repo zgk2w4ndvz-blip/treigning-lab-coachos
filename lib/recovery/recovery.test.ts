@@ -4,8 +4,10 @@ import assert from "node:assert/strict"
 
 import { matchRecoveryAthlete } from "@/lib/recovery/match"
 import { recoverySampleToSuggestion, recoverySourceKey } from "@/lib/recovery/to-suggestions"
+import { parseRecoveryImport, recoveryLogRowFromImport, writeRecoveryLog } from "@/lib/recovery/apply"
 import type { MatchClient } from "@/lib/messages/match"
 import type { RecoverySample } from "@/lib/recovery/types"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 const roster: MatchClient[] = [
   { id: "c-jordan", first_name: "Jordan", last_name: "Vance", email: "jordan.vance@example.com", phone: "+14055550101" },
@@ -72,4 +74,82 @@ assert.notEqual(
   "different day → different key"
 )
 
-console.log("✓ recovery suite: matching(priority/ambiguous/map) + sample→suggestion(map/drop/key) passed")
+// ---- apply: validate recovery_import payload -------------------------------
+const goodDetails = {
+  action: "recovery_import",
+  connector: "treigninglab",
+  source_date: "2026-06-25",
+  recovery_score: 82,
+  hrv_rmssd: 72.4,
+  resting_hr: 47.6,
+  hydration: 0.9,
+  measured_at: "2026-06-25T06:00:00Z",
+  notes: "felt strong",
+  hydration_standard: 1, // extra field preserved into raw
+  recovery_match: "email",
+}
+const parsedGood = parseRecoveryImport(goodDetails)
+assert.equal(parsedGood.ok, true)
+// invalid: missing source_date → fails safely
+assert.equal(parseRecoveryImport({ action: "recovery_import" }).ok, false)
+// non-recovery action → rejected (the inbox branch is also gated on action)
+assert.equal(parseRecoveryImport({ action: "create_weight_log", entries: [] }).ok, false)
+
+// ---- apply: pure mapping → recovery_logs row -------------------------------
+assert.ok(parsedGood.ok)
+const logRow = recoveryLogRowFromImport(parsedGood.data, {
+  clientId: "c-jordan", loggedBy: "coach-1", sourceRef: "recovery:treigninglab:ext-1:2026-06-25",
+})
+assert.equal(logRow.client_id, "c-jordan")
+assert.equal(logRow.logged_date, "2026-06-25")
+assert.equal(logRow.hrv, 72.4)
+assert.equal(logRow.resting_hr, 48, "resting_hr rounded to int")
+assert.equal(logRow.recovery_score, 82)
+assert.equal(logRow.hydration, 0.9)
+assert.equal(logRow.source, "treigninglab")
+assert.equal(logRow.source_ref, "recovery:treigninglab:ext-1:2026-06-25")
+assert.equal(logRow.notes, "felt strong")
+assert.equal((logRow.raw as Record<string, unknown>).hydration_standard, 1, "extra fields preserved in raw")
+
+// ---- apply: idempotent write (in-memory fake supabase) ---------------------
+function fakeSupabase() {
+  const rows: Record<string, unknown>[] = []
+  const client = {
+    from() {
+      const filters: Record<string, unknown> = {}
+      const api = {
+        select: () => api,
+        eq: (col: string, val: unknown) => {
+          filters[col] = val
+          return api
+        },
+        maybeSingle: async () => {
+          const hit = rows.find((r) => Object.entries(filters).every(([k, v]) => r[k] === v))
+          return { data: hit ?? null, error: null }
+        },
+        insert: async (row: Record<string, unknown>) => {
+          rows.push(row)
+          return { error: null }
+        },
+      }
+      return api
+    },
+  }
+  return { client: client as unknown as SupabaseClient, rows }
+}
+
+;(async () => {
+  const fake = fakeSupabase()
+  const w1 = await writeRecoveryLog(fake.client, logRow)
+  assert.deepEqual(w1, { ok: true, inserted: true })
+  assert.equal(fake.rows.length, 1, "first approval writes exactly one row")
+  // duplicate approval: same (client_id, source_ref) → no new row
+  const w2 = await writeRecoveryLog(fake.client, logRow)
+  assert.deepEqual(w2, { ok: true, inserted: false })
+  assert.equal(fake.rows.length, 1, "duplicate approval does not duplicate")
+
+  console.log("✓ recovery suite: matching + sample→suggestion + apply(parse/map/idempotent-write) passed")
+})().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

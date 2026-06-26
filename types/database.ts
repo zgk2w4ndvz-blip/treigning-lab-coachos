@@ -281,6 +281,13 @@ export interface Database {
         modalities: string[]
         notes: string | null
         created_at: Timestamp
+        // Connector imports (migration 0025) — null on manual logs.
+        recovery_score: number | null
+        hydration: number | null
+        source: string | null
+        measured_at: Timestamp | null
+        source_ref: string | null
+        raw: Json | null
       }, Defaults | "modalities">
 
       training_programs: Table<{
