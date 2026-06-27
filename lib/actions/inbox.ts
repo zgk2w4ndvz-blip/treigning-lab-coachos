@@ -14,6 +14,7 @@ import { mockReviewQueue } from "@/lib/mock/inbox"
 import { runIngest } from "@/lib/messages/ingest"
 import { bodyCompToWeightLogFields } from "@/lib/messages/body-comp"
 import { parseRecoveryImport, recoveryLogRowFromImport, writeRecoveryLog } from "@/lib/recovery/apply"
+import { commitRecoveryObservations } from "@/lib/observations/commit"
 import { parseMessages, type MessageFormat } from "@/lib/messages/parse"
 import { fetchGmailMessages } from "@/lib/messages/sources/gmail"
 import type { ActionState } from "@/lib/actions/types"
@@ -369,6 +370,28 @@ export async function reviewSuggestionAction(
             .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
             .eq("id", id)
           if (uErr) return { ok: false, error: uErr.message }
+
+          // DARK dual-write to the L2 observation store (P1b). Runs ONLY after
+          // recovery_logs + the status flip have succeeded, is gated by
+          // OBS_DUAL_WRITE (default off), and never throws — recovery_logs stays
+          // the source of truth and approval is already complete at this point.
+          await commitRecoveryObservations(supabase, {
+            coachId: coach.id,
+            clientId: s.client_id,
+            suggestedActionId: s.id,
+            source: row.source,
+            sourceRefBase: row.source_ref,
+            observedAt: row.measured_at ?? `${parsed.data.source_date}T00:00:00Z`,
+            committedAt: now,
+            sensitive: s.sensitive ?? false,
+            readingGroupId: randomUUID(),
+            values: {
+              hrvRmssd: row.hrv,
+              restingHr: row.resting_hr,
+              recoveryScore: row.recovery_score,
+              hydration: row.hydration,
+            },
+          })
         } else {
           const protocol = edited ? editedProtocol!.trim() : s.suggested_protocol
           const { data: presc, error: pErr } = await supabase
