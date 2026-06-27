@@ -11,6 +11,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks(.*)",
   "/api/cron(.*)", // self-authenticated via CRON_SECRET
   "/api/ingest(.*)", // self-authenticated via BRIDGE_TOKEN (bearer)
+  "/api/recovery(.*)", // recovery sync — self-authenticated via BRIDGE_TOKEN (bearer)
 ])
 
 // In dev bypass mode, skip Clerk entirely — every route is open.
