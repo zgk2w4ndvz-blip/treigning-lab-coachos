@@ -141,3 +141,33 @@ identical, visual verification + screenshot per step:
 
 U0→U1 ship first (invisible, de-risk everything after). Each phase is independently
 deployable and reversible. No production code until the design is approved.
+
+---
+
+## 7. Token reference (code) — shipped in U0
+
+U0 adds the tokens to `app/globals.css` as an **additive, currently-unused** layer
+(`--ds-*` custom properties + `@theme inline` color/radius mappings). Existing
+tokens are untouched; nothing consumes the new ones yet, so U0 is a zero-visual
+change. Components migrate onto them in U1+.
+
+| Design token | CSS variable | Tailwind utility (generated) |
+|---|---|---|
+| Page surface | `--ds-surface-page` | `bg-ds-surface-page` |
+| Card surface | `--ds-surface-1` | `bg-ds-surface-1` |
+| Elevated / hover | `--ds-surface-2` | `bg-ds-surface-2` |
+| Hairline / strong | `--ds-border` / `--ds-border-strong` | `border-ds-border` / `-strong` |
+| Text primary/secondary/muted | `--ds-text-{primary,secondary,muted}` | `text-ds-text-{…}` |
+| Primary (blue) | `--ds-primary` / `-hover` / `-bg` / `-on` | `bg-ds-primary`, `text-ds-primary-on`, … |
+| Positive (green) | `--ds-positive*` | `bg-ds-positive`, `bg-ds-positive-bg`, … |
+| Warning (amber) | `--ds-warning*` | `bg-ds-warning*` |
+| Attention (purple) | `--ds-attention*` | `bg-ds-attention*` |
+| Critical (red) | `--ds-danger*` | `bg-ds-danger*` |
+| Spacing 4–32 | `--ds-space-{1..6}` | (CSS var; use `var(--ds-space-4)`) |
+| Radius control/card/frame/pill | `--ds-radius-*` | `rounded-{control,card,frame,pill}` |
+| Elevation | `--ds-elevation-{1,2,pop}` | (CSS var; `box-shadow: var(--ds-elevation-2)`) |
+| Chart bands | `--ds-chart-{high,moderate,low}` | `text-ds-chart-high`, `stroke`/inline for SVG |
+| Chart grid/axis | `--ds-chart-{grid,axis}` | (CSS var) |
+
+Usage rule: prefer the Tailwind utility for colors/radius; reference the CSS var
+directly for spacing, elevation, and SVG chart strokes.
