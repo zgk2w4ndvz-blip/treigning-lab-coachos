@@ -302,6 +302,13 @@ export function mockRecoveryLogs(clientId: string, days = 14): RecoveryLog[] {
       modalities: d % 3 === 0 ? ["mobility"] : [],
       notes: null,
       created_at: isoDaysAgo(d),
+      // Connector-import fields (migration 0025) — null for manual/mock logs.
+      recovery_score: null,
+      hydration: null,
+      source: null,
+      measured_at: null,
+      source_ref: null,
+      raw: null,
     })
   }
   return out
