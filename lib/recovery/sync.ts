@@ -129,28 +129,41 @@ export async function runRecoverySync(
       const srcKey = recoverySourceKey(sample)
       const receivedAt = sample.measuredAt ?? `${sample.date}T00:00:00Z`
       // Synthetic message so the suggestion uses the existing inbox/approval UI.
-      const { data: msg, error: msgErr } = await supabase
+      // find-or-create: message_ingest's unique (coach_id, source, external_id)
+      // index is PARTIAL (where external_id is not null), so ON CONFLICT
+      // inference can't target it — check then insert instead of upsert.
+      let messageId: string
+      const { data: existingMsg } = await supabase
         .from("message_ingest")
-        .upsert(
-          {
+        .select("id")
+        .eq("coach_id", coachId)
+        .eq("source", "json")
+        .eq("external_id", srcKey)
+        .maybeSingle()
+      if (existingMsg) {
+        messageId = existingMsg.id
+      } else {
+        const { data: msg, error: msgErr } = await supabase
+          .from("message_ingest")
+          .insert({
             coach_id: coachId, client_id: match.clientId, source: "json",
             external_id: srcKey, body: String(suggestion.suggestedProtocol),
             received_at: receivedAt, direction: "incoming",
             match_method: asMessageMatch(match.method), match_confidence: 1,
-          },
-          { onConflict: "coach_id,source,external_id", ignoreDuplicates: false }
-        )
-        .select("id")
-        .single()
-      if (msgErr || !msg) {
-        errors.push(`Recovery message skipped (${extKey} ${sample.date}): ${msgErr?.message ?? "insert failed"}`)
-        continue
+          })
+          .select("id")
+          .single()
+        if (msgErr || !msg) {
+          errors.push(`Recovery message skipped (${extKey} ${sample.date}): ${msgErr?.message ?? "insert failed"}`)
+          continue
+        }
+        messageId = msg.id
       }
 
       const { data: sa, error: saErr } = await supabase
         .from("suggested_actions")
         .insert({
-          coach_id: coachId, client_id: match.clientId, message_id: msg.id,
+          coach_id: coachId, client_id: match.clientId, message_id: messageId,
           domain: "recovery", intent: suggestion.intent,
           suggested_protocol: suggestion.suggestedProtocol,
           confidence: suggestion.confidence, sensitive: suggestion.sensitive,
