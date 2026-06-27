@@ -631,6 +631,38 @@ export interface Database {
         ok: boolean
         created_at: Timestamp
       }, Defaults | "prompt_tokens" | "completion_tokens" | "total_tokens" | "est_cost_usd" | "ok">
+
+      // ---- Recovery sync (migration 0024) ----
+      sync_connectors: Table<{
+        coach_id: string
+        connector: string
+        enabled: boolean
+        last_run_at: Timestamp | null
+        last_cursor: string | null
+        config: Json
+        created_at: Timestamp
+        updated_at: Timestamp
+      }, "enabled" | "config" | "created_at" | "updated_at">
+
+      external_athlete_map: Table<{
+        coach_id: string
+        connector: string
+        external_id: string
+        client_id: string
+        manual: boolean
+        created_at: Timestamp
+      }, "manual" | "created_at">
+
+      recovery_sync_state: Table<{
+        coach_id: string
+        connector: string
+        external_athlete_id: string
+        sample_date: string
+        client_id: string | null
+        suggested_action_id: string | null
+        matched: boolean
+        created_at: Timestamp
+      }, "matched" | "created_at">
       weight_plans: Table<{
         id: string
         coach_id: string
