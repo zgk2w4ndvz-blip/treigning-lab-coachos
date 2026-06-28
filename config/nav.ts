@@ -44,6 +44,7 @@ export const coachNav: NavItem[] = [
   { label: "Competitions", href: "/competitions", icon: Trophy },
   { label: "Schedule", href: "/schedule", icon: CalendarClock },
   { label: "Tasks", href: "/tasks", icon: ListTodo },
+  { label: "Reports", href: "/reports", icon: Gauge },
   { label: "Alerts", href: "/alerts", icon: Bell },
   { label: "Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Settings", href: "/settings", icon: Settings },

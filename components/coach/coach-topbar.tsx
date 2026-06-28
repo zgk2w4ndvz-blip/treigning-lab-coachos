@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UserButton } from "@clerk/nextjs"
-import { Bell, Dumbbell, Menu } from "lucide-react"
+import { Bell, Dumbbell, Menu, Search } from "lucide-react"
 
 import { coachNav } from "@/config/nav"
 import { cn } from "@/lib/utils"
@@ -69,8 +69,19 @@ export function CoachTopbar({
       </div>
 
       <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-muted-foreground hidden gap-1.5 sm:inline-flex"
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          aria-label="Open command palette"
+        >
+          <Search className="size-4" />
+          <span className="text-xs">Search</span>
+          <kbd className="text-[10px] opacity-70">⌘K</kbd>
+        </Button>
         <Button asChild variant="ghost" size="icon" className="relative">
-          <Link href="/alerts" aria-label="Alerts">
+          <Link href="/notifications" aria-label="Notifications">
             <Bell className="size-5" />
             {alertCount > 0 ? (
               <span className="bg-red-500 text-white absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-[10px] font-semibold">
