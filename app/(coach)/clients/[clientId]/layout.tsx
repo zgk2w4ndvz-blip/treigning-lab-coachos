@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { requireCoach } from "@/lib/auth"
-import { getClientById } from "@/lib/data/clients"
+import { getClientSnapshot } from "@/lib/data/clients"
 import { ClientHeader } from "@/components/coach/client-header"
 import { ClientTabs } from "@/components/coach/client-tabs"
 
@@ -14,12 +14,14 @@ export default async function ClientDetailLayout({
 }) {
   await requireCoach()
   const { clientId } = await params
-  const client = await getClientById(clientId)
-  if (!client) notFound()
+  // Reuse the existing snapshot reader so the persistent header carries the
+  // readiness / weight / next-competition snapshot (no new backend).
+  const snap = await getClientSnapshot(clientId)
+  if (!snap) notFound()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6 md:p-8">
-      <ClientHeader client={client} />
+      <ClientHeader snap={snap} />
       <ClientTabs clientId={clientId} />
       <div className="flex-1">{children}</div>
     </div>
