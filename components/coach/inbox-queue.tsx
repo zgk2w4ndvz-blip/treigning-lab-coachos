@@ -2,20 +2,20 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
-import { Check, X, ShieldAlert, UserX } from "lucide-react"
+import { Check, X, ShieldAlert, UserX, Inbox, Link2, ArrowDownRight } from "lucide-react"
 
 import { reviewSuggestionAction } from "@/lib/actions/inbox"
 import { groupByMessage } from "@/lib/messages/group-inbox"
 import { cn } from "@/lib/utils"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { EmptyState } from "@/components/shared/empty-state"
-import { Inbox } from "lucide-react"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
+  Card,
+  Badge,
+  Chip,
+  Button,
+  StatusDot,
+  EmptyState,
+} from "@/components/ds"
 import type { ReviewQueueItem, SuggestionDomain } from "@/types/models"
 
 const DOMAIN_LABELS: Record<SuggestionDomain, string> = {
@@ -73,6 +73,15 @@ function lowBaseInfo(details: Details) {
 
 const isCoachRx = (details: Details) => !!details && details.author_type === "coach"
 
+/** Plain-language summary of what approving this suggestion writes. */
+function whatApprovalWrites(item: ReviewQueueItem): string {
+  const action = (item.details as Details)?.action
+  if (action === "create_weight_log") return "writes weight log entries"
+  if (action === "body_composition_update") return "updates body-composition fields"
+  if (action === "recovery_import") return "writes a recovery log"
+  return "creates a prescription + coach task"
+}
+
 /** One suggested action inside a message card — keeps its own approve/deny. */
 function ActionBlock({
   item,
@@ -90,36 +99,35 @@ function ActionBlock({
   const nutr = nutritionRows(item.details)
   const lb = lowBaseInfo(item.details)
   const coach = isCoachRx(item.details)
-  const banner = coach ? "Coach Prescription Detected" : bc ? "Athlete Update Detected" : null
+  const banner = coach ? "Coach prescription detected" : bc ? "Athlete update detected" : null
 
   return (
-    <div className="rounded-md border p-3 space-y-2">
+    <div className="rounded-control border border-ds-border p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">{DOMAIN_LABELS[item.domain]}</Badge>
+        <Badge tone="neutral">{DOMAIN_LABELS[item.domain]}</Badge>
         {item.sensitive ? (
-          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-            <ShieldAlert className="mr-1 size-3" /> Sensitive — manual review
+          <Badge tone="warning">
+            <ShieldAlert className="size-3" /> Sensitive — manual review
           </Badge>
         ) : null}
-        <span className="text-muted-foreground text-xs">conf {Math.round(item.confidence * 100)}%</span>
-        {done ? (
-          <Badge variant="outline" className="capitalize">{item.status}</Badge>
-        ) : null}
+        <span className="text-xs text-ds-text-muted">conf {Math.round(item.confidence * 100)}%</span>
+        {item.intent ? <span className="text-xs text-ds-text-secondary">· {item.intent}</span> : null}
+        {done ? <Badge tone="neutral">{item.status}</Badge> : null}
       </div>
 
       {bc || nutr || lb ? (
-        <div className="rounded-md border p-3">
+        <div className="mt-2 rounded-control bg-ds-surface-2 p-3">
           {banner ? (
-            <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-wide uppercase">{banner}</p>
+            <p className="mb-2 text-[11px] font-medium text-ds-text-muted">{banner}</p>
           ) : null}
           {bc ? (
             <>
-              <p className="mb-1.5 text-sm font-semibold">Body Composition Update</p>
+              <p className="mb-1.5 text-sm font-medium text-ds-text-primary">Body composition update</p>
               <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                 {bc.map((r) => (
                   <li key={r.label} className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">{r.label}</span>
-                    <span className="font-medium tabular-nums">{r.value}</span>
+                    <span className="text-ds-text-muted">{r.label}</span>
+                    <span className="font-medium tabular-nums text-ds-text-primary">{r.value}</span>
                   </li>
                 ))}
               </ul>
@@ -127,12 +135,12 @@ function ActionBlock({
           ) : null}
           {nutr ? (
             <>
-              <p className="mb-1.5 text-sm font-semibold">Nutrition Prescription</p>
+              <p className="mb-1.5 text-sm font-medium text-ds-text-primary">Nutrition prescription</p>
               <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                 {nutr.map((r) => (
                   <li key={r.label} className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">{r.label}</span>
-                    <span className="font-medium tabular-nums">{r.value}</span>
+                    <span className="text-ds-text-muted">{r.label}</span>
+                    <span className="font-medium tabular-nums text-ds-text-primary">{r.value}</span>
                   </li>
                 ))}
               </ul>
@@ -140,14 +148,14 @@ function ActionBlock({
           ) : null}
           {lb ? (
             <>
-              <p className="mb-1.5 text-sm font-semibold">Low Base Prescription</p>
-              <ul className="space-y-1 text-sm">
+              <p className="mb-1.5 text-sm font-medium text-ds-text-primary">Low base prescription</p>
+              <ul className="space-y-1 text-sm text-ds-text-primary">
                 {lb.mins != null ? <li className="tabular-nums">{lb.mins} minutes/session</li> : null}
                 {lb.freq != null ? <li className="tabular-nums">{lb.freq}× per week</li> : null}
                 {lb.weekly != null ? (
-                  <li className="text-muted-foreground pt-1">
-                    Total Weekly Time:{" "}
-                    <span className="text-foreground font-medium tabular-nums">{lb.weekly} min/week</span>
+                  <li className="pt-1 text-ds-text-muted">
+                    Total weekly time:{" "}
+                    <span className="font-medium tabular-nums text-ds-text-primary">{lb.weekly} min/week</span>
                   </li>
                 ) : null}
               </ul>
@@ -155,8 +163,8 @@ function ActionBlock({
           ) : null}
         </div>
       ) : (
-        <div className="space-y-1">
-          <p className="text-muted-foreground text-xs font-medium">Suggested protocol (editable)</p>
+        <div className="mt-2 space-y-1">
+          <p className="text-xs font-medium text-ds-text-muted">Suggested protocol (editable)</p>
           <Textarea
             defaultValue={item.suggestedProtocol}
             onChange={(e) => onEdit(item.id, e.target.value)}
@@ -167,12 +175,17 @@ function ActionBlock({
         </div>
       )}
 
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-ds-text-muted">
+        <ArrowDownRight className="size-3.5" /> On approve → {whatApprovalWrites(item)}
+      </p>
+
       {!done ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => onReview(item, "reject")}>
+        <div className="mt-2 flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => onReview(item, "reject")}>
             <X className="size-4" /> Reject
           </Button>
           <Button
+            variant="primary"
             size="sm"
             onClick={() => onReview(item, "approve")}
             disabled={unmatched}
@@ -230,67 +243,83 @@ export function InboxQueue({ items }: { items: ReviewQueueItem[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={show} onValueChange={(v) => setShow(v as "pending" | "all")}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pending">Pending only</SelectItem>
-            <SelectItem value="all">All statuses</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          variant={sensitiveOnly ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSensitiveOnly((v) => !v)}
-        >
-          <ShieldAlert className="size-4" />
-          Sensitive only
-        </Button>
+        <Chip active={show === "pending"} onClick={() => setShow("pending")}>
+          Pending
+        </Chip>
+        <Chip active={show === "all"} onClick={() => setShow("all")}>
+          All statuses
+        </Chip>
+        <Chip active={sensitiveOnly} onClick={() => setSensitiveOnly((v) => !v)}>
+          <ShieldAlert className="size-3.5" /> Sensitive only
+        </Chip>
       </div>
 
       {groups.length === 0 ? (
-        <EmptyState icon={Inbox} title="Queue is clear" description="No suggestions match this filter." className="py-10" />
+        <Card>
+          <EmptyState icon={<Inbox />} title="Queue is clear" description="No suggestions match this filter." />
+        </Card>
       ) : (
         groups.map((group) => {
           const unmatched = group.matchMethod === "unmatched" || !group.clientId
           return (
-            <Card key={group.key} className={cn(group.sensitive && "border-amber-300 dark:border-amber-900/60")}>
-              <CardContent className="space-y-3 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  {group.actions.length > 1 ? (
-                    <Badge variant="secondary">{group.actions.length} suggested actions</Badge>
-                  ) : null}
-                  <span className="ml-auto text-xs">
-                    {unmatched ? (
-                      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
-                        <UserX className="size-3.5" /> Unmatched
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {group.athleteName} · {group.matchMethod} {Math.round(group.matchConfidence * 100)}%
-                      </span>
-                    )}
-                  </span>
-                </div>
+            <Card
+              key={group.key}
+              className={cn(group.sensitive && "border-ds-warning", unmatched && "border-ds-warning")}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {group.actions.length > 1 ? (
+                  <Badge tone="primary">{group.actions.length} suggested actions</Badge>
+                ) : null}
+                <span className="ml-auto inline-flex items-center gap-1.5 text-xs">
+                  {unmatched ? (
+                    <span className="inline-flex items-center gap-1.5 text-ds-warning-on">
+                      <StatusDot status="warning" />
+                      <UserX className="size-3.5" /> Unmatched
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-ds-text-secondary">
+                      <StatusDot status="positive" />
+                      {group.athleteName} · {group.matchMethod} {Math.round(group.matchConfidence * 100)}%
+                    </span>
+                  )}
+                </span>
+              </div>
 
-                <p className="bg-muted/50 rounded p-2 text-sm">
-                  <span className="text-muted-foreground text-[11px] block mb-0.5">
-                    {group.source} · {group.senderLabel ?? "unknown sender"}
-                  </span>
-                  “{group.messageSnippet}”
-                </p>
+              <p className="mt-2 rounded-control bg-ds-surface-2 p-2 text-sm text-ds-text-primary">
+                <span className="mb-0.5 block text-[11px] text-ds-text-muted">
+                  {group.source} · {group.senderLabel ?? "unknown sender"}
+                </span>
+                “{group.messageSnippet}”
+              </p>
 
-                <div className="space-y-3">
-                  {group.actions.map((item) => (
-                    <ActionBlock
-                      key={item.id}
-                      item={item}
-                      unmatched={unmatched}
-                      onEdit={onEdit}
-                      onReview={review}
-                    />
-                  ))}
+              {unmatched ? (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-control bg-ds-warning-bg px-3 py-2">
+                  <span className="text-xs text-ds-warning-on">
+                    Match this sender to an athlete to enable approval.
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      toast.info("Match this athlete from their record to enable approval.")
+                    }
+                  >
+                    <Link2 className="size-4" /> Match athlete
+                  </Button>
                 </div>
-              </CardContent>
+              ) : null}
+
+              <div className="mt-3 space-y-3">
+                {group.actions.map((item) => (
+                  <ActionBlock
+                    key={item.id}
+                    item={item}
+                    unmatched={unmatched}
+                    onEdit={onEdit}
+                    onReview={review}
+                  />
+                ))}
+              </div>
             </Card>
           )
         })
