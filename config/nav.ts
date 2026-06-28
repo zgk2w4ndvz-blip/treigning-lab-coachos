@@ -128,8 +128,10 @@ export interface ClientTabGroup {
   tabs: ClientTab[]
 }
 
-/** Grouped per-client tabs (Overview / Daily / Performance / Fuel / Health /
- *  Competition). Collapses the flat 17-tab strip into 6 scannable groups.
+/** Grouped per-client tabs — athlete-first IA (U3). Nine top-level sections
+ *  (Overview · Story · Recovery · Nutrition · Training · Body Composition ·
+ *  Messages · Notes · Competitions); every existing sub-section is preserved
+ *  underneath its section, so no route is lost. Story + Notes are new.
  *  HTMA is omitted until the labs vertical ships. */
 export const clientTabGroups: ClientTabGroup[] = [
   {
@@ -137,25 +139,18 @@ export const clientTabGroups: ClientTabGroup[] = [
     tabs: [{ label: "Overview", segment: "", icon: LayoutDashboard }],
   },
   {
-    label: "Daily",
+    label: "Story",
+    tabs: [{ label: "Story", segment: "story", icon: Activity }],
+  },
+  {
+    label: "Recovery",
     tabs: [
-      { label: "Calendar", segment: "calendar", icon: CalendarDays },
-      { label: "Conversation", segment: "messages", icon: MessageSquare },
+      { label: "Recovery", segment: "recovery", icon: HeartPulse },
+      { label: "Labs", segment: "labs", icon: FlaskConical },
     ],
   },
   {
-    label: "Performance",
-    tabs: [
-      { label: "Body Comp", segment: "weight", icon: Scale },
-      { label: "Measurements", segment: "measurements", icon: Ruler },
-      { label: "Stat Tracker", segment: "metabolic", icon: Gauge },
-      { label: "Low Base", segment: "low-base", icon: Activity },
-      { label: "Weight Plan", segment: "weight-plan", icon: Target },
-      { label: "Training", segment: "training", icon: Dumbbell },
-    ],
-  },
-  {
-    label: "Fuel",
+    label: "Nutrition",
     tabs: [
       { label: "Nutrition", segment: "nutrition", icon: Utensils },
       { label: "Hydration", segment: "hydration", icon: Droplets },
@@ -164,14 +159,34 @@ export const clientTabGroups: ClientTabGroup[] = [
     ],
   },
   {
-    label: "Health",
+    label: "Training",
     tabs: [
-      { label: "Recovery", segment: "recovery", icon: HeartPulse },
-      { label: "Labs", segment: "labs", icon: FlaskConical },
+      { label: "Training", segment: "training", icon: Dumbbell },
+      { label: "Low Base", segment: "low-base", icon: Activity },
+      { label: "Weight Plan", segment: "weight-plan", icon: Target },
     ],
   },
   {
-    label: "Competition",
+    label: "Body Composition",
+    tabs: [
+      { label: "Body Comp", segment: "weight", icon: Scale },
+      { label: "Measurements", segment: "measurements", icon: Ruler },
+      { label: "Stat Tracker", segment: "metabolic", icon: Gauge },
+    ],
+  },
+  {
+    label: "Messages",
+    tabs: [
+      { label: "Conversation", segment: "messages", icon: MessageSquare },
+      { label: "Calendar", segment: "calendar", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "Notes",
+    tabs: [{ label: "Notes", segment: "notes", icon: ListTodo }],
+  },
+  {
+    label: "Competitions",
     tabs: [
       { label: "Competitions", segment: "competitions", icon: Trophy },
       { label: "Combat", segment: "combat", icon: Swords },

@@ -7,6 +7,10 @@ import { clientTabGroups } from "@/config/nav"
 import { cn } from "@/lib/utils"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 
+// Athlete section nav (U3) — restyled on the U0 tokens. Two levels: the nine
+// top-level sections, then sub-tabs for the active section (hidden when a section
+// has only one). All segments are preserved, so every existing route stays
+// reachable.
 export function ClientTabs({ clientId }: { clientId: string }) {
   const pathname = usePathname()
   const base = `/clients/${clientId}`
@@ -21,9 +25,9 @@ export function ClientTabs({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-2">
-      {/* Group bar */}
+      {/* Section bar */}
       <ScrollArea className="w-full">
-        <nav className="bg-muted/40 inline-flex items-center gap-1 rounded-lg p-1">
+        <nav className="inline-flex items-center gap-1">
           {clientTabGroups.map((group) => {
             const active = group.label === activeGroup.label
             return (
@@ -31,10 +35,10 @@ export function ClientTabs({ clientId }: { clientId: string }) {
                 key={group.label}
                 href={hrefFor(group.tabs[0].segment)}
                 className={cn(
-                  "font-heading rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide uppercase whitespace-nowrap transition-colors",
+                  "rounded-control px-3 py-1.5 text-[0.8125rem] font-medium whitespace-nowrap transition-colors duration-150",
                   active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-ds-primary-bg text-ds-primary-on"
+                    : "text-ds-text-secondary hover:bg-ds-surface-2 hover:text-ds-text-primary"
                 )}
               >
                 {group.label}
@@ -45,31 +49,33 @@ export function ClientTabs({ clientId }: { clientId: string }) {
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 
-      {/* Sub-tabs for the active group */}
-      <ScrollArea className="w-full">
-        <nav className="flex items-center gap-1 border-b">
-          {activeGroup.tabs.map((tab) => {
-            const active = tab.segment === segment
-            const Icon = tab.icon
-            return (
-              <Link
-                key={tab.label}
-                href={hrefFor(tab.segment)}
-                className={cn(
-                  "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors",
-                  active
-                    ? "border-primary text-foreground"
-                    : "text-muted-foreground hover:text-foreground border-transparent"
-                )}
-              >
-                <Icon className="size-4" />
-                {tab.label}
-              </Link>
-            )
-          })}
-        </nav>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      {/* Sub-tabs for the active section (only when more than one) */}
+      {activeGroup.tabs.length > 1 ? (
+        <ScrollArea className="w-full">
+          <nav className="flex items-center gap-1 border-b border-ds-border">
+            {activeGroup.tabs.map((tab) => {
+              const active = tab.segment === segment
+              const Icon = tab.icon
+              return (
+                <Link
+                  key={tab.label}
+                  href={hrefFor(tab.segment)}
+                  className={cn(
+                    "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[0.8125rem] font-medium whitespace-nowrap transition-colors duration-150",
+                    active
+                      ? "border-ds-primary text-ds-text-primary"
+                      : "border-transparent text-ds-text-muted hover:text-ds-text-primary"
+                  )}
+                >
+                  <Icon className="size-4" />
+                  {tab.label}
+                </Link>
+              )
+            })}
+          </nav>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      ) : null}
     </div>
   )
 }
