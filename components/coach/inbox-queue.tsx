@@ -15,6 +15,8 @@ import {
   Button,
   StatusDot,
   EmptyState,
+  ConfidenceMeter,
+  confidenceTier,
 } from "@/components/ds"
 import type { ReviewQueueItem, SuggestionDomain } from "@/types/models"
 
@@ -110,10 +112,16 @@ function ActionBlock({
             <ShieldAlert className="size-3" /> Sensitive — manual review
           </Badge>
         ) : null}
-        <span className="text-xs text-ds-text-muted">conf {Math.round(item.confidence * 100)}%</span>
+        <ConfidenceMeter value={item.confidence} />
         {item.intent ? <span className="text-xs text-ds-text-secondary">· {item.intent}</span> : null}
         {done ? <Badge tone="neutral">{item.status}</Badge> : null}
       </div>
+
+      {!done && confidenceTier(item.confidence) === "low" ? (
+        <p className="mt-2 flex items-center gap-1.5 rounded-control bg-ds-warning-bg px-2 py-1 text-[11px] text-ds-warning-on">
+          <ShieldAlert className="size-3.5 shrink-0" /> Low confidence — check this against the message before approving.
+        </p>
+      ) : null}
 
       {bc || nutr || lb ? (
         <div className="mt-2 rounded-control bg-ds-surface-2 p-3">
