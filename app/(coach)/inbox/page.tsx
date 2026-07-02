@@ -2,6 +2,8 @@ import { Inbox, ShieldAlert, UserX, CheckCheck } from "lucide-react"
 
 import { requireCoach } from "@/lib/auth"
 import { getInbox } from "@/lib/data/inbox"
+import { listClientsForRoster } from "@/lib/data/clients"
+import { fullName } from "@/lib/utils/format"
 import { MessageImport } from "@/components/coach/message-import"
 import { InboxQueue } from "@/components/coach/inbox-queue"
 import { KpiCard, SectionHeader } from "@/components/ds"
@@ -12,7 +14,9 @@ import { KpiCard, SectionHeader } from "@/components/ds"
 // reviewSuggestionAction (coach-initiated).
 export default async function InboxPage() {
   await requireCoach()
-  const { items, stats } = await getInbox()
+  const [{ items, stats }, rosterList] = await Promise.all([getInbox(), listClientsForRoster()])
+  // Lightweight roster for the approval-time athlete (re)assignment control.
+  const roster = rosterList.map((r) => ({ id: r.client.id, name: fullName(r.client.first_name, r.client.last_name) }))
 
   return (
     <main className="flex flex-1 flex-col gap-5 p-6 md:p-8">
@@ -38,7 +42,7 @@ export default async function InboxPage() {
         title="Review queue"
         action={<span className="text-xs text-ds-text-muted">{stats.pending} pending</span>}
       />
-      <InboxQueue items={items} />
+      <InboxQueue items={items} roster={roster} />
     </main>
   )
 }

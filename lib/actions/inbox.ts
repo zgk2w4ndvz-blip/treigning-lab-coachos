@@ -92,31 +92,54 @@ export async function ingestFromGmailAction(opts?: {
   }
 }
 
+/**
+ * Coach edits applied to a pending suggestion at approval time. Everything is
+ * optional; the coach corrects only what's wrong. NONE of this bypasses the
+ * approval gate — an approval still requires a matched (or here-assigned)
+ * athlete and still only writes on the coach's explicit approve click.
+ */
+export interface ReviewEdits {
+  /** Rewritten free-text protocol / notes. */
+  protocol?: string
+  /** Assign (or reassign) the athlete — enables approving an unmatched item. */
+  clientId?: string
+  /** Corrected structured payload (type/action, values, units). Replaces details. */
+  details?: Record<string, unknown>
+  /** Override the log date (yyyy-MM-dd) for weight / body-composition writes. */
+  loggedDate?: string
+}
+
 /** Approve (optionally edited) or reject a suggestion. Approval → prescription. */
 export async function reviewSuggestionAction(
   id: string,
   decision: "approve" | "reject",
-  editedProtocol?: string
+  edits?: ReviewEdits | string
 ): Promise<ActionState> {
+  // Back-compat: a bare string is treated as the edited protocol.
+  const e: ReviewEdits = typeof edits === "string" ? { protocol: edits } : edits ?? {}
+  const editedProtocol = e.protocol
   const now = new Date().toISOString()
-  const edited = editedProtocol != null && editedProtocol.trim().length > 0
+  const protocolEdited = editedProtocol != null && editedProtocol.trim().length > 0
+  const edited =
+    protocolEdited || e.clientId != null || e.details != null || e.loggedDate != null
 
   try {
     if (DEV_AUTH_BYPASS) {
       setSuggestionOverride(id, {
         status: decision === "reject" ? "rejected" : edited ? "edited" : "approved",
         reviewedAt: now,
-        editedProtocol: edited ? editedProtocol!.trim() : undefined,
+        editedProtocol: protocolEdited ? editedProtocol!.trim() : undefined,
       })
       // Approval mints a coach task (alongside the prescription) on the existing
       // tasks board + agenda. Look up the suggestion for its athlete + domain.
       if (decision === "approve") {
         const item = [...getCreatedSuggestions(), ...mockReviewQueue()].find((s) => s.id === id)
-        if (item?.clientId) {
-          const protocol = edited ? editedProtocol!.trim() : item.suggestedProtocol
+        const clientId = e.clientId ?? item?.clientId
+        if (item && clientId) {
+          const protocol = protocolEdited ? editedProtocol!.trim() : item.suggestedProtocol
           addCreatedTask({
             id: randomUUID(),
-            clientId: item.clientId,
+            clientId,
             clientName: item.athleteName,
             title: protocol,
             description: `From ${item.source} message: “${item.messageSnippet.slice(0, 140)}”`,
@@ -127,7 +150,7 @@ export async function reviewSuggestionAction(
             completedAt: null,
             createdAt: now,
           })
-          addStoredPrescription(item.clientId, {
+          addStoredPrescription(clientId, {
             id: randomUUID(),
             domain: item.domain,
             title: item.intent ?? item.domain,
@@ -150,7 +173,22 @@ export async function reviewSuggestionAction(
         const { data: s, error: sErr } = await supabase
           .from("suggested_actions").select("*").eq("id", id).single()
         if (sErr || !s) return { ok: false, error: sErr?.message ?? "Suggestion not found." }
+
+        // Coach may (re)assign the athlete at approval time. The approval gate is
+        // preserved: an approval still requires an athlete, matched or assigned.
+        if (e.clientId && e.clientId !== s.client_id) {
+          s.client_id = e.clientId
+          const { error: cErr } = await supabase
+            .from("suggested_actions").update({ client_id: e.clientId }).eq("id", id)
+          if (cErr) return { ok: false, error: cErr.message }
+        }
         if (!s.client_id) return { ok: false, error: "Match this message to an athlete before approving." }
+
+        // Coach-corrected structured payload replaces the parsed one (e.g. the
+        // extractor read "body fat 29.7%" but the coach fixes it to body weight).
+        if (e.details) s.details = e.details as typeof s.details
+
+        const kind = (s.details as { kind?: string } | null)?.kind
 
         const details = s.details as unknown as
           | {
@@ -181,7 +219,9 @@ export async function reviewSuggestionAction(
           const isComp = details.context === "competition"
           const { data: msg } = await supabase
             .from("message_ingest").select("received_at, source").eq("id", s.message_id).single()
-          const baseDate = msg?.received_at ? new Date(msg.received_at) : new Date()
+          const baseDate = e.loggedDate
+            ? new Date(`${e.loggedDate}T12:00:00`)
+            : msg?.received_at ? new Date(msg.received_at) : new Date()
           const rows = details.entries
             .filter((e) => typeof e.weightLbs === "number")
             .map((e) => {
@@ -209,7 +249,9 @@ export async function reviewSuggestionAction(
           // payload carries one; otherwise the existing/last-known weight stays.
           const { data: msg } = await supabase
             .from("message_ingest").select("received_at, source").eq("id", s.message_id).single()
-          const at = msg?.received_at ? new Date(msg.received_at) : new Date()
+          const at = e.loggedDate
+            ? new Date(`${e.loggedDate}T12:00:00`)
+            : msg?.received_at ? new Date(msg.received_at) : new Date()
           const dateStr = at.toISOString().slice(0, 10)
 
           const fields = bodyCompToWeightLogFields(details)
@@ -392,8 +434,24 @@ export async function reviewSuggestionAction(
               hydration: row.hydration,
             },
           })
+        } else if (kind === "competition_event" || kind === "travel_event") {
+          // Calendar/competition suggestion → a coach task to schedule it. NO
+          // calendar row is written automatically (no auto calendar write); the
+          // coach adds the event from the task.
+          const title = protocolEdited ? editedProtocol!.trim() : s.suggested_protocol
+          const { error: tErr } = await supabase.from("tasks").insert({
+            coach_id: coach.id, client_id: s.client_id, title,
+            description: `Scheduling suggestion from a ${s.domain} message — add to the calendar.`,
+            priority: "medium", status: "open",
+          })
+          if (tErr) return { ok: false, error: tErr.message }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
         } else {
-          const protocol = edited ? editedProtocol!.trim() : s.suggested_protocol
+          const protocol = protocolEdited ? editedProtocol!.trim() : s.suggested_protocol
           const { data: presc, error: pErr } = await supabase
             .from("prescriptions")
             .insert({
