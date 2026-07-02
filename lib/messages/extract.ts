@@ -114,6 +114,12 @@ function weightSuggestion(entries: WeightEntry[], context: WeightContext): Class
   // Strip the internal shorthandFrom marker from the approval payload; the
   // weight-log writer only reads label + weightLbs.
   const cleanEntries = entries.map(({ label, weightLbs, context: c }) => ({ label, weightLbs, context: c }))
+  const shorthandNote = entries.find((e) => e.shorthandFrom != null)
+  const reason = inferred
+    ? `Expanded shorthand “${shorthandNote!.shorthandFrom}” → ${shorthandNote!.weightLbs} lb (weight cue present, not body fat).`
+    : isComp
+      ? `Competition/weigh-in cue near the number → logged as an official weigh-in.`
+      : `Number(s) in body-weight range with a weight/time-of-day cue → logged as body weight.`
   return {
     domain: "body_composition",
     intent: isComp ? "Competition weigh-in" : inferred ? "Body weight (shorthand inferred)" : "Body weight report",
@@ -121,7 +127,7 @@ function weightSuggestion(entries: WeightEntry[], context: WeightContext): Class
     // Inferred shorthand is lower-confidence so the coach double-checks before approving.
     confidence: isComp ? 0.85 : inferred ? 0.7 : 0.85,
     sensitive: false,
-    details: { action: "create_weight_log", context, entries: cleanEntries, ...(inferred ? { inferred: true } : {}) },
+    details: { action: "create_weight_log", context, entries: cleanEntries, reason, ...(inferred ? { inferred: true } : {}) },
   }
 }
 
@@ -345,37 +351,90 @@ export function extractShorthandWeights(
   return entries
 }
 
-// ---- Upcoming competition / travel (calendar suggestion) -------------------
+// ---- Upcoming competition / travel (calendar suggestions) ------------------
 // Detects competition/tournament/weigh-in/match/travel/date language and emits
-// a PENDING suggestion the coach reviews. It never creates a calendar event —
-// approval routing is unchanged; this only surfaces the item for scheduling.
+// PENDING suggestions the coach reviews. NEVER creates a calendar event —
+// approval routing is unchanged; this only surfaces items for scheduling.
+//
+// A single message can contain several calendar-worthy clauses ("Traveling
+// Friday. Wrestling July 18."), so this scans clause-by-clause and returns one
+// suggestion per distinct event — competition vs travel are separate cards.
 
-// Strong cues fire on their own.
+// Strong competition cues fire on their own.
 const COMP_STRONG =
   /\b(competition|tournament|tourney|championships?|nationals?|regionals?|sectionals?|qualifier|weigh[-\s]?in|dual\s*meet|open\s*mat|wrestle[-\s]?offs?|invitational|scrimmage|districts?)\b/i
-// Event-ish cues need a date/travel cue to fire (avoids "nice to meet you").
-const COMP_EVENTISH =
-  /\b(match|bout|fight|meet|compete|competing|travel|traveling|travelling|flight|flying|hotel)\b/i
+// Sport/event words that need a date cue to fire (avoids "nice to meet you").
+const SPORT_EVENT =
+  /\b(match|bout|fight|meet|compete|competing|wrestling|wrestle|grappling|jiu[-\s]?jitsu|bjj|judo|boxing|mma)\b/i
+// Travel cues → a separate travel/schedule note (needs a date cue).
+const TRAVEL_CUE =
+  /\b(travel(?:ing|ling)?|flight|flying|hotel|road\s*trip|driving\s*up|leaving\s+for|headed?\s+to)\b/i
 const DATE_CUE =
   /\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}|(?:this|next)\s+(?:week|weekend|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:mon|tues|wednes|thurs|fri|satur|sun)day|weekend|on\s+the\s+\d{1,2}(?:st|nd|rd|th))\b/i
 
-/** A pending "upcoming competition" suggestion, or null. Mapped to the existing
- *  `training` domain (no schema change); the competition intent lives in the
- *  label + details.kind. */
-export function extractCompetitionEvent(text: string): ClassifiedSuggestion | null {
-  const strong = COMP_STRONG.test(text)
-  const dateMatch = DATE_CUE.exec(text)
-  const eventish = COMP_EVENTISH.test(text)
-  if (!strong && !(eventish && dateMatch)) return null
-  const when = dateMatch ? dateMatch[0].trim() : null
+function compSuggestion(when: string | null, strong: boolean, clause: string): ClassifiedSuggestion {
   return {
     domain: "training",
     intent: "Upcoming competition",
     suggestedProtocol: `Add competition to the calendar${when ? ` — ${when}` : ""}. Review the date and details, then approve.`,
     confidence: strong ? 0.7 : 0.6,
     sensitive: false,
-    details: { kind: "competition_event", when },
+    details: {
+      kind: "competition_event",
+      when,
+      reason: `Detected competition language${when ? ` and a date (“${when}”)` : ""} in “${clause.trim()}”.`,
+    },
   }
+}
+
+function travelSuggestion(when: string, clause: string): ClassifiedSuggestion {
+  return {
+    domain: "training",
+    intent: "Travel / schedule note",
+    suggestedProtocol: `Add travel${when ? ` (${when})` : ""} to the calendar as a note. Review and approve.`,
+    confidence: 0.55,
+    sensitive: false,
+    details: {
+      kind: "travel_event",
+      when,
+      reason: `Detected travel plans for “${when}” in “${clause.trim()}”.`,
+    },
+  }
+}
+
+/** All pending calendar suggestions (competition + travel) in a message. */
+export function extractCalendarSuggestions(text: string): ClassifiedSuggestion[] {
+  const out: ClassifiedSuggestion[] = []
+  const seen = new Set<string>()
+  for (const clause of text.split(/[.\n;!?]+/)) {
+    if (!clause.trim()) continue
+    const dateMatch = DATE_CUE.exec(clause)
+    const when = dateMatch ? dateMatch[0].trim() : null
+    const strong = COMP_STRONG.test(clause)
+    if (strong || (SPORT_EVENT.test(clause) && when)) {
+      const key = `comp:${when ?? ""}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push(compSuggestion(when, strong, clause))
+      }
+    } else if (TRAVEL_CUE.test(clause) && when) {
+      const key = `travel:${when}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push(travelSuggestion(when, clause))
+      }
+    }
+  }
+  return out
+}
+
+/** Back-compat: the first competition suggestion in a message, or null. */
+export function extractCompetitionEvent(text: string): ClassifiedSuggestion | null {
+  return (
+    extractCalendarSuggestions(text).find(
+      (s) => (s.details as { kind?: string } | undefined)?.kind === "competition_event"
+    ) ?? null
+  )
 }
 
 // ---- Body composition update (InBody-style readings) -----------------------
@@ -447,7 +506,11 @@ function bodyCompSuggestion(fields: BodyCompFields): ClassifiedSuggestion {
     suggestedProtocol: `Update body composition — ${parts.join(", ")}`,
     confidence: 0.85,
     sensitive: false,
-    details: { action: "body_composition_update", ...fields },
+    details: {
+      action: "body_composition_update",
+      ...fields,
+      reason: `Matched labeled body-composition field(s): ${parts.join(", ")}.`,
+    },
   }
 }
 
@@ -496,9 +559,8 @@ export function extractSignals(body: string, opts: ExtractOptions = {}): Classif
 
   if (hasComp) out.push(bodyCompSuggestion(compFields))
 
-  // Upcoming competition / travel → a pending scheduling suggestion.
-  const comp = extractCompetitionEvent(text)
-  if (comp) out.push(comp)
+  // Upcoming competition / travel → pending scheduling suggestions (0..n).
+  out.push(...extractCalendarSuggestions(text))
 
   for (const rule of OBSERVATIONS) {
     if (rule.test.test(text)) {

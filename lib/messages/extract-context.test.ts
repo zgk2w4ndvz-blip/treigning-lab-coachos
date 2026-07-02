@@ -5,7 +5,13 @@
 
 import assert from "node:assert/strict"
 
-import { extractSignals, extractShorthandWeights, extractCompetitionEvent } from "@/lib/messages/extract"
+import {
+  extractSignals,
+  extractShorthandWeights,
+  extractCompetitionEvent,
+  extractCalendarSuggestions,
+} from "@/lib/messages/extract"
+import { analyzeMessage } from "@/lib/messages/analyze"
 
 type WeightDetails = {
   action: string
@@ -108,3 +114,61 @@ assert.ok(extractCompetitionEvent("weigh-in is on 07/18"), "strong cue fires alo
 }
 
 console.log("✓ competition detection: 6 assertions passed")
+
+// ── Multi-suggestion extraction (#6) ──────────────────────────────────────────
+// One inbound message → separate pending cards, none auto-written.
+{
+  const sigs = extractSignals("I'm 129.7 this morning. Traveling Friday. Wrestling July 18.", { matched: true })
+  const kinds = sigs.map((s) => {
+    const d = s.details as { action?: string; kind?: string } | undefined
+    return d?.action ?? d?.kind
+  })
+  assert.ok(kinds.includes("create_weight_log"), "weight update present")
+  assert.ok(kinds.includes("travel_event"), "travel note present")
+  assert.ok(kinds.includes("competition_event"), "competition event present")
+
+  const weight = sigs.find((s) => (s.details as { action?: string }).action === "create_weight_log")
+  assert.equal((weight!.details as unknown as WeightDetails).entries[0].weightLbs, 129.7)
+
+  const comp = sigs.find((s) => (s.details as { kind?: string }).kind === "competition_event")
+  assert.ok(/jul/i.test((comp!.details as { when?: string }).when ?? ""), "competition date is July 18")
+  const travel = sigs.find((s) => (s.details as { kind?: string }).kind === "travel_event")
+  assert.ok(/fri/i.test((travel!.details as { when?: string }).when ?? ""), "travel date is Friday")
+}
+
+// Two calendar clauses → two calendar suggestions.
+{
+  const cal = extractCalendarSuggestions("Traveling Thursday. Tournament on 07/18.")
+  assert.equal(cal.length, 2, "one travel + one competition")
+}
+
+// Travel-only (with a date) → a travel note, not a competition.
+{
+  const cal = extractCalendarSuggestions("Flying to Dallas next Saturday")
+  assert.equal(cal.length, 1)
+  assert.equal((cal[0].details as { kind?: string }).kind, "travel_event")
+}
+
+// Classifier word-boundary guard: "wrestling" must not match the recovery
+// keyword "rest" (substring) and mint a spurious recovery card.
+{
+  const analyzed = analyzeMessage("I'm 129.7 this morning. Traveling Friday. Wrestling July 18.", { matched: true })
+  assert.ok(!analyzed.some((s) => s.domain === "recovery"), "no spurious recovery from 'wrestling'")
+  const kinds = analyzed.map((s) => {
+    const d = s.details as { action?: string; kind?: string } | undefined
+    return d?.action ?? d?.kind
+  })
+  assert.ok(kinds.includes("create_weight_log") && kinds.includes("travel_event") && kinds.includes("competition_event"))
+}
+
+console.log("✓ multi-suggestion: 3 groups passed")
+
+// ── Stored reasoning (#5) ─────────────────────────────────────────────────────
+{
+  const s = weightSug("This morning I was 29.7", { matched: true })
+  assert.ok(typeof (s!.details as { reason?: string }).reason === "string", "shorthand carries a reason")
+  const comp = extractCompetitionEvent("upcoming tournament on 07/18")
+  assert.ok(typeof (comp!.details as { reason?: string }).reason === "string", "competition carries a reason")
+}
+
+console.log("✓ reasoning present: passed")

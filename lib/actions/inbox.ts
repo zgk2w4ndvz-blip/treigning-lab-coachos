@@ -188,6 +188,8 @@ export async function reviewSuggestionAction(
         // extractor read "body fat 29.7%" but the coach fixes it to body weight).
         if (e.details) s.details = e.details as typeof s.details
 
+        const kind = (s.details as { kind?: string } | null)?.kind
+
         const details = s.details as unknown as
           | {
               action?: string
@@ -432,6 +434,22 @@ export async function reviewSuggestionAction(
               hydration: row.hydration,
             },
           })
+        } else if (kind === "competition_event" || kind === "travel_event") {
+          // Calendar/competition suggestion → a coach task to schedule it. NO
+          // calendar row is written automatically (no auto calendar write); the
+          // coach adds the event from the task.
+          const title = protocolEdited ? editedProtocol!.trim() : s.suggested_protocol
+          const { error: tErr } = await supabase.from("tasks").insert({
+            coach_id: coach.id, client_id: s.client_id, title,
+            description: `Scheduling suggestion from a ${s.domain} message — add to the calendar.`,
+            priority: "medium", status: "open",
+          })
+          if (tErr) return { ok: false, error: tErr.message }
+          const { error: uErr } = await supabase
+            .from("suggested_actions")
+            .update({ status: edited ? "edited" : "approved", reviewed_by: coach.id, reviewed_at: now })
+            .eq("id", id)
+          if (uErr) return { ok: false, error: uErr.message }
         } else {
           const protocol = protocolEdited ? editedProtocol!.trim() : s.suggested_protocol
           const { data: presc, error: pErr } = await supabase

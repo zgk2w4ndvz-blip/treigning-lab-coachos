@@ -75,7 +75,11 @@ assert.equal(
   "body_composition_update",
   "suggestion carries the action the approval flow branches on"
 )
-assert.deepEqual(sug.details, {
+// `reason` is human-readable metadata for the reasoning UI; strip it before the
+// strict field-shape check (the approval flow ignores unknown keys).
+const { reason: _reason, ...sugFields } = sug.details as Record<string, unknown>
+void _reason
+assert.deepEqual(sugFields, {
   action: "body_composition_update",
   body_fat_mass_lbs: 19.7,
   skeletal_muscle_mass_lbs: 88.4,
@@ -92,7 +96,7 @@ assert.ok(!actions.includes("create_weight_log"), "no weight-log suggestion from
 
 // ---- Approval mapping (weight-log write shape) ---------------------------
 // body_fat_percentage → body_fat_pct; SMM mirrored to muscle_mass_lbs; NO weight.
-const mapped = bodyCompToWeightLogFields(sug.details as BodyCompFields & { action: string })
+const mapped = bodyCompToWeightLogFields(sug.details as unknown as BodyCompFields & { action: string })
 assert.deepEqual(mapped, {
   body_fat_pct: 11.4,
   skeletal_muscle_mass_lbs: 88.4,

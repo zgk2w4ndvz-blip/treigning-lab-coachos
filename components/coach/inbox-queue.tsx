@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
-import { Check, X, ShieldAlert, UserX, Inbox, Link2, ArrowDownRight, Pencil } from "lucide-react"
+import { Check, X, ShieldAlert, UserX, Inbox, Link2, ArrowDownRight, Pencil, Info } from "lucide-react"
 
 import { reviewSuggestionAction, type ReviewEdits } from "@/lib/actions/inbox"
 import { groupByMessage } from "@/lib/messages/group-inbox"
@@ -73,13 +73,42 @@ function lowBaseInfo(details: Details) {
 
 const isCoachRx = (details: Details) => !!details && details.author_type === "coach"
 
-/** Plain-language summary of what approving this suggestion writes. */
-function whatApprovalWrites(item: ReviewQueueItem): string {
-  const action = (item.details as Details)?.action
-  if (action === "create_weight_log") return "writes weight log entries"
-  if (action === "body_composition_update") return "updates body-composition fields"
-  if (action === "recovery_import") return "writes a recovery log"
-  return "creates a prescription + coach task"
+/** Deterministic "why the system read it this way". Prefers a stored reason
+ *  (from the extractor), else falls back to a domain/action explanation.
+ *  No AI call — this is either recorded rationale or a rule description. */
+function explainDetails(item: ReviewQueueItem, d: Details): string {
+  const reason = (d as { reason?: unknown } | null)?.reason
+  if (typeof reason === "string" && reason.trim()) return reason
+  const action = (d as { action?: string; kind?: string } | null)?.action ?? (d as { kind?: string } | null)?.kind
+  if (action === "create_weight_log") return "Number(s) in body-weight range with a weight/time-of-day cue."
+  if (action === "body_composition_update") return "Labeled body-composition fields (PBF/SMM/…) were present."
+  if (action === "nutrition_prescription") return "Calorie/macro targets were detected in the message."
+  if (action === "competition_event") return "Competition/tournament language with a date cue."
+  if (action === "travel_event") return "Travel language with a date cue."
+  return `Keyword match for the ${DOMAIN_LABELS[item.domain]} domain.`
+}
+
+/** Live preview of the exact write on approval, reflecting current edits. */
+function previewWrite(d: Details, clientName: string, dateLabel: string): string {
+  const action = (d as { action?: string; kind?: string } | null)?.action ?? (d as { kind?: string } | null)?.kind
+  if (action === "create_weight_log") {
+    const entries = (d as { entries?: { label?: string; weightLbs?: number }[] }).entries ?? []
+    const parts = entries.map((e) => `${e.weightLbs} lb${e.label && e.label !== "general" ? ` (${e.label})` : ""}`)
+    return `weight_logs → ${parts.join(", ") || "—"} for ${clientName} on ${dateLabel}`
+  }
+  if (action === "body_composition_update") {
+    const bc = bodyCompRows(d) ?? []
+    return `weight_logs (body-comp) → ${bc.map((r) => `${r.label} ${r.value}`).join(", ")} for ${clientName}`
+  }
+  if (action === "nutrition_prescription") {
+    const nutr = nutritionRows(d) ?? []
+    return `nutrition_plan → ${nutr.map((r) => `${r.label} ${r.value}`).join(", ")} for ${clientName}`
+  }
+  if (action === "competition_event" || action === "travel_event") {
+    const when = (d as { when?: string | null }).when
+    return `coach task → schedule ${action === "travel_event" ? "travel" : "competition"}${when ? ` (${when})` : ""} for ${clientName} — no calendar event is created automatically`
+  }
+  return `prescription + coach task for ${clientName}`
 }
 
 export type RosterOption = { id: string; name: string }
@@ -171,6 +200,16 @@ function ActionBlock({
 
   // Approve enabled when the item is matched OR the coach assigned an athlete.
   const canApprove = !unmatched || !!clientId
+
+  // Effective (live) view of the suggestion, reflecting any open-panel edits —
+  // drives the reasoning + write preview so the coach sees exactly what lands.
+  const liveEdits = editOpen ? buildEdits() : {}
+  const effDetails = (liveEdits.details ?? item.details) as Details
+  const effClientName =
+    (clientId ? roster.find((r) => r.id === clientId)?.name : null) ?? item.athleteName ?? "the athlete"
+  const effDate = logDate || "the message date"
+  const why = explainDetails(item, effDetails)
+  const preview = previewWrite(effDetails, effClientName, effDate)
 
   return (
     <div className="rounded-control border border-ds-border p-3">
@@ -304,9 +343,16 @@ function ActionBlock({
         </div>
       )}
 
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-ds-text-muted">
-        <ArrowDownRight className="size-3.5" /> On approve → {whatApprovalWrites(item)}
-      </p>
+      <div className="mt-2 space-y-1 rounded-control bg-ds-surface-2 p-2">
+        <p className="flex items-start gap-1.5 text-[11px] text-ds-text-muted">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <span><span className="font-medium">Why:</span> {why}</span>
+        </p>
+        <p className="flex items-start gap-1.5 text-[11px] text-ds-text-secondary">
+          <ArrowDownRight className="mt-0.5 size-3.5 shrink-0" />
+          <span><span className="font-medium">On approve:</span> {preview}</span>
+        </p>
+      </div>
 
       {!done ? (
         <div className="mt-2 flex items-center justify-end gap-2">

@@ -89,7 +89,19 @@ const MEDICAL_KEYWORDS = [
   "chest", "concussion", "menstrual", "period", "pregnan", "heart", "fainted",
 ]
 
-const hasKeyword = (text: string, kw: string) => text.includes(kw)
+// Domain keywords match on WORD BOUNDARIES so a short keyword can't fire inside
+// an unrelated word (e.g. "rest" must not match inside "w-rest-ling", "pr" must
+// not match inside "approach"). Multi-word keywords ("weight loss") still work.
+// Medical stems below intentionally keep substring matching ("pregnan").
+const kwCache = new Map<string, RegExp>()
+function hasKeyword(text: string, kw: string): boolean {
+  let re = kwCache.get(kw)
+  if (!re) {
+    re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+    kwCache.set(kw, re)
+  }
+  return re.test(text)
+}
 
 /** Classify a message body into 0..n suggested actions. */
 export function classifyMessage(body: string): ClassifiedSuggestion[] {
