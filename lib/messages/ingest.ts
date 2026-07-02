@@ -15,6 +15,7 @@ import { DEV_AUTH_BYPASS } from "@/lib/dev"
 import { getBypassClients } from "@/lib/dev-roster-store"
 import { addCreatedSuggestions } from "@/lib/dev-inbox-store"
 import { analyzeMessage } from "@/lib/messages/analyze"
+import type { AthleteWeightContext } from "@/lib/messages/extract"
 import { extractCoachPrescriptions } from "@/lib/messages/coach-rx"
 import { aiExtractSuggestions } from "@/lib/ai/extract"
 import { matchAthlete, normalizeHandle, type MatchClient } from "@/lib/messages/match"
@@ -51,6 +52,25 @@ export interface IngestSummary {
   preview?: IngestPreviewItem[]
   /** Per-message outcomes (externalId → actions/match). */
   results: IngestResultItem[]
+}
+
+/** Numeric weight-class limit parsed from a free-text class ("133", "133 lbs"). */
+function parseWeightClass(s: string | null | undefined): number | null {
+  if (!s) return null
+  const m = /\d{2,3}(?:\.\d+)?/.exec(s)
+  return m ? parseFloat(m[0]) : null
+}
+
+/** Build the shorthand-weight anchoring context from a client's stored fields. */
+function athleteWeightContext(
+  c: { current_weight?: number | null; goal_weight?: number | null; current_weight_class?: string | null } | undefined
+): AthleteWeightContext | undefined {
+  if (!c) return undefined
+  return {
+    currentWeightLbs: c.current_weight ?? null,
+    goalWeightLbs: c.goal_weight ?? null,
+    weightClassLbs: parseWeightClass(c.current_weight_class),
+  }
 }
 
 /** A stable action label for a suggestion (details.action, else domain). */
@@ -90,7 +110,10 @@ function ingestBypass(messages: ParsedMessage[], dryRun = false): IngestSummary 
     if (match.clientId) matched++
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const incoming = (m.direction ?? "incoming") === "incoming"
-    const analyzed = incoming ? analyzeMessage(m.body, { matched: !!match.clientId }) : extractCoachPrescriptions(m.body)
+    const bypassClient = match.clientId ? getBypassClients().find((c) => c.id === match.clientId) : undefined
+    const analyzed = incoming
+      ? analyzeMessage(m.body, { matched: !!match.clientId, athlete: athleteWeightContext(bypassClient) })
+      : extractCoachPrescriptions(m.body)
     results.push({
       externalId: m.externalId,
       clientId: match.clientId,
@@ -148,8 +171,12 @@ export async function runIngest(
     : { coachId: (await requireCoach()).id, supabase: await createServerSupabase() }
 
   const { data: clients } = await supabase
-    .from("clients").select("id, first_name, last_name, email, phone").eq("coach_id", coachId)
+    .from("clients")
+    .select("id, first_name, last_name, email, phone, current_weight, goal_weight, current_weight_class")
+    .eq("coach_id", coachId)
   const roster = (clients ?? []) as MatchClient[]
+  // Athlete weight context (for shorthand-weight anchoring), keyed by client id.
+  const ctxById = new Map((clients ?? []).map((c) => [c.id, athleteWeightContext(c)] as const))
   let matched = 0
   let suggestionCount = 0
   const preview: IngestPreviewItem[] = []
@@ -168,7 +195,10 @@ export async function runIngest(
     // the default behavior is unchanged. AI output is still only PENDING
     // suggestions — never auto-applied.
     const regexAnalyzed = incoming
-      ? analyzeMessage(m.body, { matched: !!match.clientId })
+      ? analyzeMessage(m.body, {
+          matched: !!match.clientId,
+          athlete: match.clientId ? ctxById.get(match.clientId) : undefined,
+        })
       : extractCoachPrescriptions(m.body)
     const athleteFirstName = match.clientId
       ? roster.find((c) => c.id === match.clientId)?.first_name ?? null

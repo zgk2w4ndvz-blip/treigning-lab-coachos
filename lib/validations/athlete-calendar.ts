@@ -38,8 +38,12 @@ export const calendarEventSchema = z.object({
     .min(1, "Start date/time is required")
     .refine((v) => WALL_CLOCK.test(v), "Invalid date/time"),
   ends_at: optWallClock,
+  // Checkbox: unchecked inputs are omitted from FormData entirely, so the key
+  // can be absent. `.optional()` is required for a missing key under zod v4
+  // (a bare union with z.undefined() still treats the field as nonoptional).
   all_day: z
-    .union([z.literal("on"), z.literal(""), z.undefined()])
+    .union([z.literal("on"), z.literal("")])
+    .optional()
     .transform((v) => v === "on"),
   status: z.enum(["planned", "completed", "skipped"]).default("planned"),
   recurrence: z.enum(["none", "daily", "weekly"]).default("none"),

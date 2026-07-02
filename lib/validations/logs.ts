@@ -63,8 +63,11 @@ export const trainingSessionSchema = z.object({
   session_type: optText,
   duration_min: optNum,
   rpe: score10,
+  // Checkbox: unchecked inputs are omitted from FormData, so the key can be
+  // absent — `.optional()` is required under zod v4 (see athlete-calendar.ts).
   completed: z
-    .union([z.literal("on"), z.literal(""), z.undefined()])
+    .union([z.literal("on"), z.literal("")])
+    .optional()
     .transform((v) => v === "on"),
   notes: optText,
 })

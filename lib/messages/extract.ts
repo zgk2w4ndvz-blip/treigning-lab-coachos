@@ -27,6 +27,20 @@ export interface WeightEntry {
   weightLbs: number
   /** Ordinary daily body weight vs an official competition / weigh-in number. */
   context: WeightContext
+  /** Set when the value was inferred from a shorthand number (29.7 → 129.7). */
+  shorthandFrom?: number
+}
+
+/** Optional athlete weight context used to disambiguate shorthand weights.
+ *  All fields optional — the extractor stays pure and degrades gracefully when
+ *  a caller can't supply context. */
+export interface AthleteWeightContext {
+  currentWeightLbs?: number | null
+  goalWeightLbs?: number | null
+  /** Numeric weight-class limit (parsed from e.g. "133", "133 lbs"). */
+  weightClassLbs?: number | null
+  /** A few recent body-weight readings, most-recent first. */
+  recentWeightsLbs?: number[]
 }
 
 // A number only counts as a body weight when the message is clearly about
@@ -91,17 +105,23 @@ export function extractWeights(text: string): WeightEntry[] {
 }
 
 function weightSuggestion(entries: WeightEntry[], context: WeightContext): ClassifiedSuggestion {
-  const parts = entries.map(
-    (e) => `${e.label === "general" ? "" : e.label + " "}${e.weightLbs} lb`.trim()
-  )
+  const inferred = entries.some((e) => e.shorthandFrom != null)
+  const parts = entries.map((e) => {
+    const base = `${e.label === "general" ? "" : e.label + " "}${e.weightLbs} lb`.trim()
+    return e.shorthandFrom != null ? `${base} (from “${e.shorthandFrom}”)` : base
+  })
   const isComp = context === "competition"
+  // Strip the internal shorthandFrom marker from the approval payload; the
+  // weight-log writer only reads label + weightLbs.
+  const cleanEntries = entries.map(({ label, weightLbs, context: c }) => ({ label, weightLbs, context: c }))
   return {
     domain: "body_composition",
-    intent: isComp ? "Competition weigh-in" : "Body weight report",
+    intent: isComp ? "Competition weigh-in" : inferred ? "Body weight (shorthand inferred)" : "Body weight report",
     suggestedProtocol: `Log ${isComp ? "competition weigh-in" : "weight"} — ${parts.join(", ")}`,
-    confidence: 0.85,
+    // Inferred shorthand is lower-confidence so the coach double-checks before approving.
+    confidence: isComp ? 0.85 : inferred ? 0.7 : 0.85,
     sensitive: false,
-    details: { action: "create_weight_log", context, entries },
+    details: { action: "create_weight_log", context, entries: cleanEntries, ...(inferred ? { inferred: true } : {}) },
   }
 }
 
@@ -230,6 +250,134 @@ export function extractBareWeight(text: string): WeightEntry | null {
   return { label, weightLbs: round1(val), context: "body" }
 }
 
+// ---- Shorthand body weight (wrestlers / combat athletes) -------------------
+// Athletes routinely drop the leading hundreds digit: "this morning I was 29.7"
+// means 129.7 lb, not 29.7% body fat. We expand a sub-100 number to a plausible
+// body weight ONLY when the message reads like a body-weight report and never
+// when body fat is explicitly named. Gated on a matched athlete (like the bare
+// rule) so we never invent a weight for an unknown sender. Every shorthand entry
+// is tagged (`shorthandFrom`) and lands in the coach's approval queue — never an
+// auto-write.
+
+// Message-level signal that a number is a BODY WEIGHT.
+const WEIGHT_INTENT =
+  /\b(weight|weighed|weighing|weigh[-\s]?in|body\s?weight|\bbw\b|scale|this morning|i\s*was|i['’]?m\b|i\s*am\b|woke up|first thing|fasted|like\s+\d)\b/i
+// Explicit body-fat naming — the ONLY thing that makes a number a percentage.
+const BODY_FAT_EXPLICIT = /\b(body\s?fat|\bbf\b|\bpbf\b|percent(?:age)?)\b|%/i
+// A unit/word right after the number that means it is NOT a bare body weight
+// (times, durations, reps, ordinals, distances, an explicit weight unit, …).
+const NONWEIGHT_AFTER =
+  /^\s*(?:%|am|pm|a\.m|p\.m|min|mins|minute|minutes|hr|hrs|hour|hours|sec|secs|second|seconds|rep|reps|set|sets|round|rounds|mi|mile|miles|km|k|oz|cup|cups|lbs?|kgs?|pound|pounds|day|days|week|weeks|month|months|x|:|st|nd|rd|th)\b/i
+
+const SHORT_MIN = 10
+const SHORT_MAX = 99.9
+const EXPANDED_MIN = 90 // lightest realistic combat-athlete body weight
+const EXPANDED_MAX = 285
+
+function referenceWeights(ctx: AthleteWeightContext): number[] {
+  return [ctx.currentWeightLbs, ctx.goalWeightLbs, ctx.weightClassLbs, ...(ctx.recentWeightsLbs ?? [])]
+    .filter((n): n is number => typeof n === "number" && Number.isFinite(n))
+}
+
+/** Expand a shorthand number (e.g. 29.7) to a full body weight (129.7), using
+ *  athlete context to pick the hundreds digit when available. */
+function expandShorthand(raw: number, refs: number[]): number | null {
+  const candidates = [raw + 100, raw + 200]
+  if (refs.length) {
+    let best: number | null = null
+    let bestD = Infinity
+    for (const c of candidates) {
+      for (const r of refs) {
+        const d = Math.abs(c - r)
+        if (d <= 20 && d < bestD) {
+          best = c
+          bestD = d
+        }
+      }
+    }
+    return best
+  }
+  // No context: default to +100 (the common case) if it's a plausible weight.
+  const c = raw + 100
+  return c >= EXPANDED_MIN && c <= EXPANDED_MAX ? c : null
+}
+
+/** Shorthand body-weight readings from a message, or []. Requires a matched
+ *  athlete and either an explicit weight cue or athlete context to anchor on. */
+export function extractShorthandWeights(
+  text: string,
+  ctx: AthleteWeightContext = {},
+  matched = false
+): WeightEntry[] {
+  if (!matched) return []
+  if (BODY_FAT_EXPLICIT.test(text)) return [] // explicit body fat is never a weight
+  const refs = referenceWeights(ctx)
+  const hasIntent = WEIGHT_INTENT.test(text)
+  if (!hasIntent && refs.length === 0) return []
+
+  const lower = text.toLowerCase()
+  const entries: WeightEntry[] = []
+  const seen = new Set<string>()
+  const re = /\d{1,2}(?:\.\d{1,2})?/g // 1–2 leading digits → strictly sub-100
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) {
+    const raw = parseFloat(m[0])
+    if (!(raw >= SHORT_MIN && raw <= SHORT_MAX)) continue
+    const after = text.slice(m.index + m[0].length)
+    if (NONWEIGHT_AFTER.test(after)) continue // 45 minutes, 30%, 18th, 45 lbs…
+    const around = text.slice(Math.max(0, m.index - 2), m.index + m[0].length + 3)
+    if (/\d\s*[:/\-]\s*\d/.test(around)) continue // times / dates / ranges
+    const expanded = expandShorthand(raw, refs)
+    if (expanded == null) continue
+
+    const before = lower.slice(Math.max(0, m.index - 28), m.index)
+    const win = `${before} ${lower.slice(m.index)}`
+    let label: TimeOfDay = "general"
+    if (MORNING.test(win)) label = "morning"
+    else if (EVENING.test(win)) label = "evening"
+
+    const key = `${label}:${expanded}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    entries.push({ label, weightLbs: round1(expanded), context: "body", shorthandFrom: raw })
+    if (entries.length >= 4) break
+  }
+  return entries
+}
+
+// ---- Upcoming competition / travel (calendar suggestion) -------------------
+// Detects competition/tournament/weigh-in/match/travel/date language and emits
+// a PENDING suggestion the coach reviews. It never creates a calendar event —
+// approval routing is unchanged; this only surfaces the item for scheduling.
+
+// Strong cues fire on their own.
+const COMP_STRONG =
+  /\b(competition|tournament|tourney|championships?|nationals?|regionals?|sectionals?|qualifier|weigh[-\s]?in|dual\s*meet|open\s*mat|wrestle[-\s]?offs?|invitational|scrimmage|districts?)\b/i
+// Event-ish cues need a date/travel cue to fire (avoids "nice to meet you").
+const COMP_EVENTISH =
+  /\b(match|bout|fight|meet|compete|competing|travel|traveling|travelling|flight|flying|hotel)\b/i
+const DATE_CUE =
+  /\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}|(?:this|next)\s+(?:week|weekend|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:mon|tues|wednes|thurs|fri|satur|sun)day|weekend|on\s+the\s+\d{1,2}(?:st|nd|rd|th))\b/i
+
+/** A pending "upcoming competition" suggestion, or null. Mapped to the existing
+ *  `training` domain (no schema change); the competition intent lives in the
+ *  label + details.kind. */
+export function extractCompetitionEvent(text: string): ClassifiedSuggestion | null {
+  const strong = COMP_STRONG.test(text)
+  const dateMatch = DATE_CUE.exec(text)
+  const eventish = COMP_EVENTISH.test(text)
+  if (!strong && !(eventish && dateMatch)) return null
+  const when = dateMatch ? dateMatch[0].trim() : null
+  return {
+    domain: "training",
+    intent: "Upcoming competition",
+    suggestedProtocol: `Add competition to the calendar${when ? ` — ${when}` : ""}. Review the date and details, then approve.`,
+    confidence: strong ? 0.7 : 0.6,
+    sensitive: false,
+    details: { kind: "competition_event", when },
+  }
+}
+
 // ---- Body composition update (InBody-style readings) -----------------------
 // Recognizes labeled body-composition fields an athlete texts (PBF, SMM, fat
 // mass, TBW, BMR). Each field needs a label followed by a number — so bare
@@ -306,6 +454,8 @@ function bodyCompSuggestion(fields: BodyCompFields): ClassifiedSuggestion {
 export interface ExtractOptions {
   /** True when the message already matched an athlete (enables bare-weight). */
   matched?: boolean
+  /** Optional athlete weight context — anchors shorthand-weight inference. */
+  athlete?: AthleteWeightContext
 }
 
 /** Extract structured signals from a message body as pending suggestions. */
@@ -333,10 +483,22 @@ export function extractSignals(body: string, opts: ExtractOptions = {}): Classif
     if (bare) bodyWeights = [bare]
   }
 
+  // Shorthand fallback: "this morning I was 29.7" → 129.7 lb. Only when nothing
+  // else read a weight, no body-comp reading, and the message isn't about body
+  // fat (guarded inside extractShorthandWeights).
+  if (!hasComp && bodyWeights.length === 0 && compWeights.length === 0) {
+    const shorthand = extractShorthandWeights(text, opts.athlete ?? {}, !!opts.matched)
+    if (shorthand.length) bodyWeights = shorthand
+  }
+
   if (bodyWeights.length) out.push(weightSuggestion(bodyWeights, "body"))
   if (compWeights.length) out.push(weightSuggestion(compWeights, "competition"))
 
   if (hasComp) out.push(bodyCompSuggestion(compFields))
+
+  // Upcoming competition / travel → a pending scheduling suggestion.
+  const comp = extractCompetitionEvent(text)
+  if (comp) out.push(comp)
 
   for (const rule of OBSERVATIONS) {
     if (rule.test.test(text)) {
