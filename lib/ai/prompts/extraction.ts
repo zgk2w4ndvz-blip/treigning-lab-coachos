@@ -23,6 +23,9 @@ Rules:
 export interface ExtractionContext {
   direction: "incoming" | "outgoing"
   athleteFirstName?: string | null
+  /** Recent prior messages from the same thread, most-recent first — lets the
+   *  model resolve an isolated reply against the conversation. */
+  recentTexts?: string[]
 }
 
 export function buildExtractionUserPrompt(body: string, ctx: ExtractionContext): string {
@@ -31,5 +34,16 @@ export function buildExtractionUserPrompt(body: string, ctx: ExtractionContext):
       ? "This is an OUTBOUND message FROM the coach (may contain prescriptions/assessments)."
       : "This is an INBOUND message FROM the athlete (may contain self-reported readings/issues)."
   const name = ctx.athleteFirstName ? ` Athlete first name: ${ctx.athleteFirstName}.` : ""
-  return `${who}${name}\n\nMessage:\n"""\n${body}\n"""`
+  // Conversation memory: give the model the recent thread (oldest → newest) so an
+  // ambiguous message ("129.7", "same as yesterday") is read in context. Only the
+  // final message is extracted; earlier lines are context, not new signals.
+  const recent = (ctx.recentTexts ?? []).filter((t) => t && t.trim()).slice(0, 6)
+  const thread = recent.length
+    ? `\n\nRecent thread (older → newer, CONTEXT ONLY — do not extract from these):\n${recent
+        .slice()
+        .reverse()
+        .map((t) => `- ${t.replace(/\s+/g, " ").trim().slice(0, 240)}`)
+        .join("\n")}`
+    : ""
+  return `${who}${name}${thread}\n\nMessage to extract (the newest message):\n"""\n${body}\n"""`
 }

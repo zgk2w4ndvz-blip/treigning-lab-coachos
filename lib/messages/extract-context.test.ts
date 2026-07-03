@@ -12,6 +12,7 @@ import {
   extractCalendarSuggestions,
 } from "@/lib/messages/extract"
 import { analyzeMessage } from "@/lib/messages/analyze"
+import { buildExtractionUserPrompt } from "@/lib/ai/prompts/extraction"
 
 type WeightDetails = {
   action: string
@@ -172,3 +173,37 @@ console.log("✓ multi-suggestion: 3 groups passed")
 }
 
 console.log("✓ reasoning present: passed")
+
+// ── Conversation memory (#1): thread context changes interpretation ───────────
+{
+  // A bare shorthand number alone is NOT a weight (no cue, no athlete context).
+  assert.equal(weightSug("29.7", { matched: true }), undefined, "bare shorthand alone → nothing")
+
+  // Same message, but the recent thread is about weighing → read as 129.7 lb.
+  const withThread = weightSug("29.7", {
+    matched: true,
+    recentTexts: ["what was your morning weight?"],
+  })
+  assert.ok(withThread, "recent weight-topic thread makes the reply a weight")
+  assert.equal((withThread!.details as unknown as WeightDetails).entries[0].weightLbs, 129.7)
+
+  // An unrelated thread must NOT create a weight.
+  assert.equal(
+    weightSug("29.7", { matched: true, recentTexts: ["see you at practice", "sounds good"] }),
+    undefined,
+    "unrelated thread → still nothing"
+  )
+}
+
+// AI extraction prompt carries the recent thread as CONTEXT-ONLY.
+{
+  const p = buildExtractionUserPrompt("29.7", {
+    direction: "incoming",
+    recentTexts: ["what was your morning weight?"],
+  })
+  assert.ok(/Recent thread/.test(p), "prompt includes a recent-thread section")
+  assert.ok(/morning weight/i.test(p), "prompt includes the prior message")
+  assert.ok(/newest message/i.test(p), "prompt marks which message to extract")
+}
+
+console.log("✓ conversation memory: 2 groups passed")

@@ -313,12 +313,15 @@ function expandShorthand(raw: number, refs: number[]): number | null {
 export function extractShorthandWeights(
   text: string,
   ctx: AthleteWeightContext = {},
-  matched = false
+  matched = false,
+  threadWeightTopic = false
 ): WeightEntry[] {
   if (!matched) return []
   if (BODY_FAT_EXPLICIT.test(text)) return [] // explicit body fat is never a weight
   const refs = referenceWeights(ctx)
-  const hasIntent = WEIGHT_INTENT.test(text)
+  // A weight cue in THIS message, or a weight topic active in the recent thread
+  // (conversation memory), both let an ambiguous shorthand number be a weight.
+  const hasIntent = WEIGHT_INTENT.test(text) || threadWeightTopic
   if (!hasIntent && refs.length === 0) return []
 
   const lower = text.toLowerCase()
@@ -519,6 +522,19 @@ export interface ExtractOptions {
   matched?: boolean
   /** Optional athlete weight context — anchors shorthand-weight inference. */
   athlete?: AthleteWeightContext
+  /**
+   * Conversation memory: recent prior message bodies from the SAME athlete
+   * (most-recent first). Lets an isolated reply be read in the context of the
+   * thread — e.g. a bare "29.7" is a weight when the recent thread is about
+   * weighing. Never changes the pending-suggestion workflow.
+   */
+  recentTexts?: string[]
+}
+
+/** True when the recent thread is clearly about weighing (weight topic active). */
+export function threadHasWeightTopic(recentTexts: string[] | undefined): boolean {
+  if (!recentTexts?.length) return false
+  return recentTexts.some((t) => WEIGHT_INTENT.test(t) || WEIGHT_CONTEXT.test(t))
 }
 
 /** Extract structured signals from a message body as pending suggestions. */
@@ -550,7 +566,8 @@ export function extractSignals(body: string, opts: ExtractOptions = {}): Classif
   // else read a weight, no body-comp reading, and the message isn't about body
   // fat (guarded inside extractShorthandWeights).
   if (!hasComp && bodyWeights.length === 0 && compWeights.length === 0) {
-    const shorthand = extractShorthandWeights(text, opts.athlete ?? {}, !!opts.matched)
+    const threadWeightTopic = threadHasWeightTopic(opts.recentTexts)
+    const shorthand = extractShorthandWeights(text, opts.athlete ?? {}, !!opts.matched, threadWeightTopic)
     if (shorthand.length) bodyWeights = shorthand
   }
 

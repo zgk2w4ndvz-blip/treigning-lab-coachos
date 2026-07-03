@@ -49,3 +49,4 @@ next-env.d.ts
 tools/treigning-import/raw-backup/
 tools/treigning-import/out/
 tools/treigning-import/.session/
+.claude/
