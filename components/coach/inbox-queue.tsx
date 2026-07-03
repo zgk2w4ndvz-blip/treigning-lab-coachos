@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
-import { Check, X, ShieldAlert, UserX, Inbox, Link2, ArrowDownRight, Pencil, Info } from "lucide-react"
+import { Check, X, ShieldAlert, UserX, Inbox, Link2, ArrowDownRight, Pencil, Info, PenLine, Copy } from "lucide-react"
 
 import { reviewSuggestionAction, type ReviewEdits } from "@/lib/actions/inbox"
+import { draftReplyAction } from "@/lib/actions/draft"
 import { groupByMessage } from "@/lib/messages/group-inbox"
 import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
@@ -374,6 +375,96 @@ function ActionBlock({
   )
 }
 
+/** Coach reply drafting for one inbound message. Draft only — the generated
+ *  text is editable and copyable; it is NEVER sent automatically (the app has
+ *  no send channel) and writes no athlete data. */
+function DraftReply({
+  messageBody,
+  athleteName,
+  summaries,
+}: {
+  messageBody: string
+  athleteName: string | null
+  summaries: string[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [draft, setDraft] = useState("")
+  const [source, setSource] = useState<"ai" | "template" | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [, start] = useTransition()
+
+  function generate() {
+    setOpen(true)
+    setLoading(true)
+    setSource(null)
+    start(async () => {
+      const res = await draftReplyAction({
+        messageBody,
+        athleteFirstName: athleteName,
+        suggestionSummaries: summaries,
+      })
+      setLoading(false)
+      if (res.ok) {
+        setDraft(res.draft)
+        setSource(res.source)
+      } else {
+        toast.error(res.error)
+        setOpen(false)
+      }
+    })
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(draft)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error("Copy failed")
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-3 border-t border-ds-border pt-3">
+        <Button variant="secondary" size="sm" onClick={generate}>
+          <PenLine className="size-4" /> Draft reply
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ds-border pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-ds-text-muted">
+          Draft reply — edit before sending; never sent automatically
+        </span>
+        {source ? <Badge tone="neutral">{source === "ai" ? "AI draft" : "Template draft"}</Badge> : null}
+      </div>
+      {loading ? (
+        <p className="text-xs text-ds-text-muted">Drafting…</p>
+      ) : (
+        <>
+          <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="text-sm" />
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={copy}>
+              <Copy className="size-4" /> {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={generate}>
+              Regenerate
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function InboxQueue({ items, roster = [] }: { items: ReviewQueueItem[]; roster?: RosterOption[] }) {
   const [rows, setRows] = useState(items)
   const [edits, setEdits] = useState<Record<string, string>>({})
@@ -500,6 +591,12 @@ export function InboxQueue({ items, roster = [] }: { items: ReviewQueueItem[]; r
                   />
                 ))}
               </div>
+
+              <DraftReply
+                messageBody={group.messageSnippet}
+                athleteName={group.athleteName}
+                summaries={[...new Set(group.actions.map((a) => a.intent ?? DOMAIN_LABELS[a.domain]))]}
+              />
             </Card>
           )
         })

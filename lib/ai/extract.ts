@@ -12,6 +12,8 @@ export interface AiExtractContext {
   coachId: string | null
   direction: "incoming" | "outgoing"
   athleteFirstName?: string | null
+  /** Recent prior messages from the same athlete (most-recent first). */
+  recentTexts?: string[]
 }
 
 /**
@@ -36,6 +38,7 @@ export async function aiExtractSuggestions(
     userPrompt: buildExtractionUserPrompt(text, {
       direction: ctx.direction,
       athleteFirstName: ctx.athleteFirstName,
+      recentTexts: ctx.recentTexts,
     }),
     schemaName: "message_extraction",
     jsonSchema: AI_EXTRACTION_JSON_SCHEMA,

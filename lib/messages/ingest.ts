@@ -8,6 +8,8 @@ import "server-only"
 
 import { randomUUID } from "node:crypto"
 
+import type { SupabaseClient } from "@supabase/supabase-js"
+
 import { requireCoach } from "@/lib/auth"
 import { createServerSupabase } from "@/lib/supabase/server"
 import { createAdminSupabase } from "@/lib/supabase/admin"
@@ -70,6 +72,27 @@ function athleteWeightContext(
     currentWeightLbs: c.current_weight ?? null,
     goalWeightLbs: c.goal_weight ?? null,
     weightClassLbs: parseWeightClass(c.current_weight_class),
+  }
+}
+
+/** Recent prior INBOUND message bodies for an athlete (most-recent first).
+ *  Conversation memory for extraction — read-only, small, and best-effort
+ *  (any error just yields no context). */
+async function recentInboundTexts(
+  supabase: SupabaseClient,
+  clientId: string
+): Promise<string[]> {
+  try {
+    const { data } = await supabase
+      .from("message_ingest")
+      .select("body, received_at, direction")
+      .eq("client_id", clientId)
+      .eq("direction", "incoming")
+      .order("received_at", { ascending: false })
+      .limit(5)
+    return (data ?? []).map((r) => r.body as string).filter((b) => b && b.trim())
+  } catch {
+    return []
   }
 }
 
@@ -190,6 +213,10 @@ export async function runIngest(
     // Inbound → athlete analysis; outbound → coach prescription extraction.
     const direction = m.direction ?? "incoming"
     const incoming = direction === "incoming"
+    // Conversation memory: recent prior INBOUND messages from this athlete, so an
+    // isolated reply is interpreted in the context of the thread. Read-only.
+    const recentTexts =
+      incoming && match.clientId ? await recentInboundTexts(supabase, match.clientId) : undefined
     // AI-first extraction with a deterministic regex fallback. AI is OFF unless
     // AI_ENABLED=true (then null is returned instantly with no API/DB cost), so
     // the default behavior is unchanged. AI output is still only PENDING
@@ -198,6 +225,7 @@ export async function runIngest(
       ? analyzeMessage(m.body, {
           matched: !!match.clientId,
           athlete: match.clientId ? ctxById.get(match.clientId) : undefined,
+          recentTexts,
         })
       : extractCoachPrescriptions(m.body)
     const athleteFirstName = match.clientId
@@ -207,6 +235,7 @@ export async function runIngest(
       coachId,
       direction,
       athleteFirstName,
+      recentTexts,
     })
     const analyzed = aiAnalyzed ?? regexAnalyzed
     results.push({
