@@ -4,46 +4,70 @@ import {
   MessageSquare,
   AlertTriangle,
   Trophy,
+  Utensils,
+  Dumbbell,
+  StickyNote,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
 import { timeAgo, relativeDays } from "@/lib/utils/format"
 import { Card, SectionHeader, EmptyState } from "@/components/ds"
+import type { TimelineEvent, TimelineKind, TrendStat } from "@/lib/timeline/build"
 
-export type StoryEventKind = "weight" | "recovery" | "alert" | "message"
-
-export interface StoryEvent {
-  id: string
-  kind: StoryEventKind
-  title: string
-  detail?: string | null
-  source?: string | null
-  at: string
-}
-
-const KIND_META: Record<StoryEventKind, { icon: LucideIcon; cls: string }> = {
+const KIND_META: Record<TimelineKind, { icon: LucideIcon; cls: string }> = {
   weight: { icon: Scale, cls: "bg-ds-primary-bg text-ds-primary-on" },
   recovery: { icon: HeartPulse, cls: "bg-ds-primary-bg text-ds-primary-on" },
+  nutrition: { icon: Utensils, cls: "bg-ds-attention-bg text-ds-attention-on" },
+  training: { icon: Dumbbell, cls: "bg-ds-attention-bg text-ds-attention-on" },
+  competition: { icon: Trophy, cls: "bg-ds-warning-bg text-ds-warning-on" },
   alert: { icon: AlertTriangle, cls: "bg-ds-danger-bg text-ds-danger-on" },
+  note: { icon: StickyNote, cls: "bg-ds-surface-2 text-ds-text-secondary" },
   message: { icon: MessageSquare, cls: "bg-ds-surface-2 text-ds-text-secondary" },
 }
 
-// Story (U3) — the athlete's recent record as a narrative timeline, assembled from
-// EXISTING per-domain readers (weight, recovery, alerts, messages). Read-only; it
-// does NOT read the observations table (that goes live in L2 P4, which will deepen
-// this view). Built on U0 tokens + U1 primitives.
+const TREND_ICON = { up: TrendingUp, down: TrendingDown, flat: Minus } as const
+
+// Story (U3 → performance timeline). The athlete's recent record as a trend
+// header + a context-rich, merged timeline assembled from EXISTING per-domain
+// readers (weight, body-comp, recovery, nutrition, training, competitions,
+// messages, alerts, notes). Read-only; does NOT read the Observation Store.
 export function ClientStory({
   subtitle,
   nextCompetition,
+  trends = [],
   events,
 }: {
   subtitle: string
   nextCompetition?: { name: string; competition_date: string } | null
-  events: StoryEvent[]
+  trends?: TrendStat[]
+  events: TimelineEvent[]
 }) {
   return (
     <Card>
       <SectionHeader title="Story" description={subtitle} />
+
+      {trends.length ? (
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {trends.map((t) => {
+            const TIcon = t.direction ? TREND_ICON[t.direction] : null
+            return (
+              <div key={t.label} className="rounded-control border border-ds-border bg-ds-surface-2 px-3 py-2">
+                <div className="text-[11px] text-ds-text-muted">{t.label}</div>
+                <div className="text-[0.9375rem] font-medium tabular-nums text-ds-text-primary">{t.value}</div>
+                {t.delta ? (
+                  <div className="mt-0.5 flex items-center gap-1 text-[11px] text-ds-text-secondary">
+                    {TIcon ? <TIcon className="size-3" /> : null}
+                    <span className="tabular-nums">{t.delta}</span>
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
 
       {nextCompetition ? (
         <div className="mb-3 flex items-center gap-3 rounded-control border border-ds-border bg-ds-surface-2 px-3 py-2.5">
@@ -64,7 +88,7 @@ export function ClientStory({
       {events.length === 0 ? (
         <EmptyState
           title="No story yet"
-          description="Logged weight, recovery, alerts, and messages will appear here over time."
+          description="Logged weight, body comp, recovery, nutrition, training, messages, and competitions will appear here over time."
         />
       ) : (
         <div className="relative">
@@ -90,6 +114,9 @@ export function ClientStory({
                   </div>
                   {e.detail ? (
                     <div className="mt-0.5 truncate text-xs text-ds-text-muted">{e.detail}</div>
+                  ) : null}
+                  {e.context ? (
+                    <div className="mt-0.5 text-[11px] font-medium tabular-nums text-ds-text-secondary">{e.context}</div>
                   ) : null}
                   {e.source ? (
                     <div className="mt-1 text-[11px] text-ds-text-secondary">{e.source}</div>
